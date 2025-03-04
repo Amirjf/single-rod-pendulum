@@ -24,9 +24,9 @@ class DigitalTwin:
         # Model parameters
         self.g = 9.81  # Acceleration due to gravity (m/s^2)
         self.l = 0.8   # Length of the pendulum (m)
-        self.c_air = 0.5  # Air friction coefficient
+        self.c_air = 0.2  # Air friction coefficient
         self.c_c = 1.1   # Coulomb friction coefficient
-        self.a_m = 2000 # Motor acceleration force tranfer coefficient
+        self.a_m = 3000 # Motor acceleration force tranfer coefficient
         self.future_motor_accelerations = []
         self.future_motor_positions = []
         self.currentmotor_acceleration = 0.
@@ -149,19 +149,39 @@ class DigitalTwin:
             
             self.future_motor_accelerations.append(c)
         
-        _velocity = it.cumtrapz(self.future_motor_accelerations,initial=0)
-        self.future_motor_positions = list(it.cumtrapz(_velocity,initial=0))
+        _velocity = it.cumulative_trapezoid(self.future_motor_accelerations, initial=0)
+        self.future_motor_positions = list(it.cumulative_trapezoid(_velocity, initial=0))
     
     
     def get_theta_double_dot(self, theta, theta_dot):
         """
-        Lab 1: Model the angular acceleration (theta_double_dot) 
-        as a function of theta, theta_dot and the self.currentmotor_acceleration. 
-        You should include the following constants aswell: c_air, c_c, a_m, l and g. 
+        Calculate the angular acceleration of the pendulum.
+        
+        Parameters:
+        - theta: Current angle of the pendulum from vertical
+        - theta_dot: Current angular velocity
+        
+        Returns:
+        - theta_double_dot: Angular acceleration of the pendulum
         """
-        # Implement your model here.
-        return None
-
+        # Gravitational contribution to angular acceleration
+        gravity_term = -self.g / self.l * math.sin(theta)
+        
+        # Air friction contribution (proportional to angular velocity)
+        air_friction_term = -self.c_air * theta_dot
+        
+        # Coulomb friction term (sign-dependent friction)
+        coulomb_friction_term = -self.c_c * np.sign(theta_dot)
+        
+        # Motor acceleration contribution 
+        # Opposite to cart acceleration to maintain conservation of momentum
+        motor_acceleration_term = -self.currentmotor_acceleration * self.a_m / (self.l)
+        
+        # Total angular acceleration
+        theta_double_dot = gravity_term + air_friction_term + coulomb_friction_term + motor_acceleration_term
+        
+        return theta_double_dot
+        
     def step(self):
         # Get the predicted motor acceleration for the next step and the shift in x_pivot
         self.check_prediction_lists()
