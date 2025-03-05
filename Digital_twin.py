@@ -24,8 +24,8 @@ class DigitalTwin:
         # Model parameters
         self.g = 9.81  # Acceleration due to gravity (m/s^2)
         self.l = 0.8   # Length of the pendulum (m)
-        self.c_air = 0.2  # Air friction coefficient
-        self.c_c = 1.1   # Coulomb friction coefficient
+        self.c_air = 0.0416  # Air friction coefficient (Matches damping B from paper)
+        self.c_c = 0.608e-3  # Coulomb friction coefficient (Matches Tq from paper)
         self.a_m = 3000 # Motor acceleration force tranfer coefficient
         self.future_motor_accelerations = []
         self.future_motor_positions = []
