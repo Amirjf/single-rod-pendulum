@@ -201,15 +201,7 @@ class DigitalTwin:
         angular_acceleration = torque_gravity + torque_air_friction + torque_coulomb_friction + torque_motor
         
         return angular_acceleration
-    
-    # def get_theta_double_dot(self, theta, theta_dot):
-    #     a_motor = self.currentmotor_acceleration
-    #     gravity_term = (-self.g / self.l) * math.sin(theta)
-    #     motor_term = (-a_motor / self.l) * math.cos(theta)
-    #     air_friction = -self.c_air * theta_dot
-    #     mechanical_friction = -self.c_c * np.sign(theta_dot)
-    #     return gravity_term + motor_term + air_friction + mechanical_friction
-        
+  
     def step(self):
         # Get the predicted motor acceleration for the next step and the shift in x_pivot
         self.check_prediction_lists()
