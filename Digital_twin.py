@@ -50,6 +50,18 @@ class DigitalTwin:
         self.writer = None
         self.start_time = 0.
         self.df = None
+
+
+        self.R = 8.6538       # Ohms
+        self.k = 0.0174       # Motor constant
+        self.Bv = 5.9751e-7   # Viscous friction (Nms)
+        self.J = 8.5075e-7    # Moment of inertia (kg·m²)
+        self.L = 0.0238       # Inductance (H)
+        self.Tq = 0.6082e-3   # Static friction (Nm)
+        self.gear_ratio = 340.0
+        self.pulley_radius = 0.01  # meters
+
+        self.future_motor_accelerations = []    
         # Initialize a pygame window
         self.initialize_pygame_window()
 
@@ -125,6 +137,7 @@ class DigitalTwin:
         if duration > 0:
             self.update_motor_accelerations(direction, duration/1000)
 
+    
     def update_motor_accelerations(self, direction, duration):
         if direction == 'left':
             direction = -1
@@ -139,6 +152,7 @@ class DigitalTwin:
         t1 = duration/4
         t2_d = duration/4
         t2 = duration - t2_d
+
         for t in np.arange(0.0, duration+self.delta_t, self.delta_t):
             if t <= t1:
                 c = -4*direction*a_m_1/(t1*t1) * t * (t-t1)
@@ -155,32 +169,46 @@ class DigitalTwin:
     
     def get_theta_double_dot(self, theta, theta_dot):
         """
-        Calculate the angular acceleration of the pendulum.
+        Calculate the angular acceleration (second derivative of theta) for the pendulum.
         
         Parameters:
-        - theta: Current angle of the pendulum from vertical
-        - theta_dot: Current angular velocity
+        - theta: Current angle of the pendulum (radians)
+        - theta_dot: Current angular velocity of the pendulum (radians/s)
         
         Returns:
-        - theta_double_dot: Angular acceleration of the pendulum
+        - Angular acceleration (radians/s^2)
         """
-        # Gravitational contribution to angular acceleration
-        gravity_term = -self.g / self.l * math.sin(theta)
+        # Gravitational torque component
+        torque_gravity = -(self.g / self.l) * np.sin(theta)
         
-        # Air friction contribution (proportional to angular velocity)
-        air_friction_term = -self.c_air * theta_dot
+        # Air friction (proportional to velocity)
+        torque_air_friction = -self.c_air * theta_dot
         
-        # Coulomb friction term (sign-dependent friction)
-        coulomb_friction_term = -self.c_c * np.sign(theta_dot)
+        # Coulomb friction (constant magnitude, opposing the motion)
+        if abs(theta_dot) > 1e-6:  # Avoid division by zero
+            torque_coulomb_friction = -self.c_c * np.sign(theta_dot)
+        else:
+            # When angular velocity is very close to zero, avoid applying Coulomb friction
+            # This prevents the pendulum from getting stuck artificially
+            torque_coulomb_friction = 0
         
-        # Motor acceleration contribution 
-        # Opposite to cart acceleration to maintain conservation of momentum
-        motor_acceleration_term = -self.currentmotor_acceleration * self.a_m / (self.l)
+        # Motor effect: Key change - when the cart accelerates left (negative acceleration),
+        # the pendulum should initially swing right (positive torque)
+        # We negate the motor acceleration to get this correct behavior
+        torque_motor = -self.a_m * self.currentmotor_acceleration * np.cos(theta)
         
-        # Total angular acceleration
-        theta_double_dot = gravity_term + air_friction_term + coulomb_friction_term + motor_acceleration_term
+        # Sum all torques and calculate angular acceleration
+        angular_acceleration = torque_gravity + torque_air_friction + torque_coulomb_friction + torque_motor
         
-        return theta_double_dot
+        return angular_acceleration
+    
+    # def get_theta_double_dot(self, theta, theta_dot):
+    #     a_motor = self.currentmotor_acceleration
+    #     gravity_term = (-self.g / self.l) * math.sin(theta)
+    #     motor_term = (-a_motor / self.l) * math.cos(theta)
+    #     air_friction = -self.c_air * theta_dot
+    #     mechanical_friction = -self.c_c * np.sign(theta_dot)
+    #     return gravity_term + motor_term + air_friction + mechanical_friction
         
     def step(self):
         # Get the predicted motor acceleration for the next step and the shift in x_pivot

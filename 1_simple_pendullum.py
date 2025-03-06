@@ -29,6 +29,7 @@ class Pendulum:
     def update(self):
         """ Update the pendulum's motion using physics equations """
         acc = (-self.g / self.l) * math.sin(self.a)  # Angular acceleration
+        print(acc)
         self.av += acc  # Angular velocity
         self.av *= 0.99  # Damping (simulates air resistance)
 
