@@ -11,6 +11,8 @@ class DigitalTwin:
     def __init__(self):
         # Initialize Pygame parameters
         self.screen = None
+        self.x_pivot_limit = 100
+        self.integral_error = 0.0
         # Initialize serial communication parameters
         self.ser = None
         self.device_connected = False
@@ -154,6 +156,10 @@ class DigitalTwin:
         t2 = duration - t2_d
 
         for t in np.arange(0.0, duration+self.delta_t, self.delta_t):
+            if self.x_pivot == self.x_pivot_limit and direction > 0:
+                c = 0  # Stop adding force when stuck at the right limit
+            elif self.x_pivot == -self.x_pivot_limit and direction < 0:
+                c = 0  # Stop adding force when stuck at the left limit
             if t <= t1:
                 c = -4*direction*a_m_1/(t1*t1) * t * (t-t1)
             elif t < t2 and t > t1:
@@ -195,7 +201,15 @@ class DigitalTwin:
         # Motor effect: Key change - when the cart accelerates left (negative acceleration),
         # the pendulum should initially swing right (positive torque)
         # We negate the motor acceleration to get this correct behavior
-        torque_motor = -self.a_m * self.currentmotor_acceleration * np.cos(theta)
+
+        # Check if motor is stuck at the limit
+        if (self.x_pivot == -self.x_pivot_limit and self.currentmotor_acceleration < 0) or \
+        (self.x_pivot == self.x_pivot_limit and self.currentmotor_acceleration > 0):
+            torque_motor = 0  # Completely remove motor effect
+        else:
+            torque_motor = (-self.a_m * self.currentmotor_acceleration / self.l) * np.cos(theta)
+
+        # torque_motor = (-self.a_m * self.currentmotor_acceleration / self.l) * np.cos(theta)
         
         # Sum all torques and calculate angular acceleration
         angular_acceleration = torque_gravity + torque_air_friction + torque_coulomb_friction + torque_motor
@@ -203,11 +217,31 @@ class DigitalTwin:
         return angular_acceleration
   
     def step(self):
+        print(f"STEP: x_pivot={self.x_pivot}, Acceleration={self.currentmotor_acceleration}, Limit={self.x_pivot_limit}")
         # Get the predicted motor acceleration for the next step and the shift in x_pivot
         self.check_prediction_lists()
-        #print(self.future_motor_accelerations)
         self.currentmotor_acceleration = self.future_motor_accelerations.pop(0)
-        self.x_pivot = self.x_pivot + self.future_motor_positions.pop(0)/3
+
+        # self.stabilize_inverted_pendulum()
+
+        # Prevent motor from applying force if stuck at boundary BEFORE updating `x_pivot`
+        if self.x_pivot == -self.x_pivot_limit and self.currentmotor_acceleration < 0:
+            self.currentmotor_acceleration = 0  # Stop leftward force
+        if self.x_pivot == self.x_pivot_limit and self.currentmotor_acceleration > 0:
+            self.currentmotor_acceleration = 0  # Stop rightward force
+
+        # Calculate the new position shift based on motor action
+        new_x_pivot = self.x_pivot + self.future_motor_positions.pop(0) / 3
+
+        # Apply limit using self.x_pivot_limit
+        if new_x_pivot < -self.x_pivot_limit:
+            self.x_pivot = -self.x_pivot_limit
+        elif new_x_pivot > self.x_pivot_limit:
+            self.x_pivot = self.x_pivot_limit
+            
+        else:
+            self.x_pivot = new_x_pivot
+
         # Update the system state based on the action and model dynamics
         self.theta_double_dot = self.get_theta_double_dot(self.theta, self.theta_dot)
         self.theta += self.theta_dot * self.delta_t
@@ -240,5 +274,53 @@ class DigitalTwin:
             self.future_motor_accelerations = [0]
         if len(self.future_motor_positions) == 0:
             self.future_motor_positions = [0]
+
+    def stabilize_inverted_pendulum(self):
+        """
+        Simulates key presses to move the motor and keep the pendulum upright.
+        Uses PID control to determine movement direction and selects predefined movement durations.
+        """
+
+        # Define PID Controller parameters (tune these for better performance)
+        Kp = 10.0  # Proportional gain (how strongly it reacts to tilt)
+        Ki = 0.5   # Integral gain (helps correct small steady errors)
+        Kd = 3.0   # Derivative gain (reduces oscillations)
+
+        # Error: How far the pendulum is from vertical (0 rad)
+        error = self.theta - np.pi  # Target is now π (not 0)
+
+        # Compute the derivative of the error (change in theta over time)
+        d_error = self.theta_dot  # Theta_dot is how fast the pendulum is tilting
+
+        # Integrate the error over time (accumulate corrections)
+        self.integral_error += error * self.delta_t  # Accumulate small corrections
+
+        # Compute control signal (motor movement needed)
+        control_signal = - (Kp * error + Ki * self.integral_error + Kd * d_error)
+
+        # Determine direction based on control signal
+        if control_signal > 0:
+            direction = 'right'
+            actions_list = [(key, duration) for key, (dir, duration) in self.actions.items() if dir == 'right']
+        else:
+            direction = 'left'
+            actions_list = [(key, duration) for key, (dir, duration) in self.actions.items() if dir == 'left']
+
+        # Choose the appropriate action based on how much correction is needed
+        abs_control_signal = abs(control_signal)
+        
+        if abs_control_signal > 1.5:
+            selected_action = actions_list[0]  # Largest movement
+        elif abs_control_signal > 1.0:
+            selected_action = actions_list[1]
+        elif abs_control_signal > 0.5:
+            selected_action = actions_list[2]
+        else:
+            selected_action = actions_list[3]  # Smallest movement
+
+        key, duration = selected_action
+
+        # Simulate key press by calling perform_action()
+        self.perform_action(direction, duration)
 
 
