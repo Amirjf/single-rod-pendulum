@@ -28,7 +28,7 @@ class DigitalTwin:
         self.l = 0.8   # Length of the pendulum (m)
         self.c_air = 0.0416  # Air friction coefficient (Matches damping B from paper)
         self.c_c = 0.608e-3  # Coulomb friction coefficient (Matches Tq from paper)
-        self.a_m = 2000  # Reduced from 3000 to 30 for more realistic force transfer
+        self.a_m = 2000  # Reduced from 2000 to more realistic value
         self.future_motor_accelerations = []
         self.future_motor_positions = []
         self.currentmotor_acceleration = 0.
@@ -202,112 +202,120 @@ class DigitalTwin:
 
         # Add debug print
     # L298 + DC MOTOR REALISTIC IMPLEMENTATION:
-    def update_motor_accelerations(self, direction, duration):
-        # Match hardware direction
-        if direction == 'left':
-            direction = 1
-        else:
-            direction = -1
-
-        # Check limits
-        if (self.x_pivot == self.x_pivot_limit and direction > 0) or \
-        (self.x_pivot == -self.x_pivot_limit and direction < 0):
-            return
-
-        # Motor parameters (L298 + DC motor)
-        V_supply = 12.0  # Supply voltage
-        duty_cycle = min(duration/200.0, 1.0)  # PWM duty cycle
-        V_motor = direction * duty_cycle * V_supply  # Effective motor voltage
-        
-        # Initialize lists
-        self.future_motor_accelerations = []
-        self.future_motor_positions = []
-        current_position = self.x_pivot
-        current_velocity = 0
-        current_current = 0  # Motor current
-        
-        # Simulation time steps
-        for t in np.arange(0.0, duration+self.delta_t, self.delta_t):
-            # Convert linear velocity to angular velocity
-            omega = current_velocity * self.gear_ratio / self.pulley_radius
-            
-            # Calculate back EMF
-            V_bemf = self.k * omega  # Reduced back EMF effect
-            
-            # Calculate motor current (using L and R)
-            dI_dt = (V_motor - V_bemf - self.R * current_current) / self.L
-            current_current += dI_dt * self.delta_t
-            current_current = np.clip(current_current, -2.0, 2.0)  # Current limit
-            
-            # Calculate motor torque with reduced effect
-            T_motor = self.k * current_current  # Reduced motor torque
-            T_viscous = self.Bv * omega
-            T_coulomb = self.Tq * np.sign(omega) if abs(omega) > 1e-6 else 0
-            T_net = T_motor - T_viscous - T_coulomb
-            
-            # Convert torque to linear force through gear ratio and pulley
-            F_linear = T_net * self.gear_ratio / self.pulley_radius
-            
-            # Calculate linear acceleration (F = ma)
-            linear_accel = F_linear / 1.0  # Increased cart mass to 1.0 kg for more inertia
-            linear_accel *= 0.001  # Reduced scale factor for more realistic visualization
-            
-            # Add boundary checks
-            if (current_position >= self.x_pivot_limit and direction > 0) or \
-               (current_position <= -self.x_pivot_limit and direction < 0):
-                linear_accel = 0
-                current_velocity = 0
-            
-            # Update states with damping
-            self.future_motor_accelerations.append(linear_accel)
-            current_velocity = current_velocity * 0.99 + linear_accel * self.delta_t  # Added velocity damping
-            current_position += current_velocity * self.delta_t
-            self.future_motor_positions.append(current_position)
-        
-        # Debug prints
-        print(f"Motor voltage: {V_motor:.2f}V")
-        print(f"Initial current: {current_current:.2f}A")
-        print(f"Initial acceleration: {self.future_motor_accelerations[0]:.3f} m/s²")
-        print(f"Position change: {self.future_motor_positions[-1] - self.x_pivot:.3f} m") 
-
-
-
     # def update_motor_accelerations(self, direction, duration):
-        
-    #     # Your current implementation remains here
+    #     # Match hardware direction to match perform_action
     #     if direction == 'left':
-    #         direction = -1
+    #         direction = -1  # Negative for left to match hardware
     #     else:
-    #         direction = 1
+    #         direction = 1   # Positive for right to match hardware
 
-    #     # Check if the motor should be blocked at the limit
+    #     # Check limits
     #     if (self.x_pivot == self.x_pivot_limit and direction > 0) or \
     #     (self.x_pivot == -self.x_pivot_limit and direction < 0):
-    #         print(f"🚨 BLOCKED MOVE: x_pivot={self.x_pivot}, direction={direction}")
-    #         return  # Stop movement at the boundary
+    #         return
 
-    #     a_m_1 = 0.05
-    #     a_m_2 = 0.05
-    #     t1 = duration/4
-    #     t2_d = duration/4
-    #     t2 = duration - t2_d
+    #     # Motor parameters (L298 + DC motor)
+    #     V_supply = 12.0  # Supply voltage (V)
+    #     duty_cycle = min(duration/200.0, 1.0)  # PWM duty cycle
+    #     V_motor = direction * duty_cycle * V_supply  # Effective motor voltage
 
-    #     for t in np.arange(0.0, duration+self.delta_t, self.delta_t):
-    #         if self.x_pivot == self.x_pivot_limit and direction > 0:
-    #             c = 0  # Stop adding force when stuck at the right limit
-    #         elif self.x_pivot == -self.x_pivot_limit and direction < 0:
-    #             c = 0  # Stop adding force when stuck at the left limit
-    #         if t <= t1:
-    #             c = -4*direction*a_m_1/(t1*t1) * t * (t-t1)
-    #         elif t < t2 and t > t1:
-    #             c = 0 
-    #         elif t >= t2:
-    #             c = 4*direction*a_m_2/(t2_d*t2_d) * (t-t2) * (t-duration)
-            
-    #         self.future_motor_accelerations.append(c)
+    #     # Motor constants
+    #     Kt = self.k  # Motor torque constant (Nm/A)
+    #     Ke = self.k  # Back EMF constant (V·s/rad)
+    #     R = self.R   # Motor resistance (Ω)
+    #     cart_mass = 0.5  # Reduced mass for more visible movement
         
-    #     _velocity = it.cumulative_trapezoid(self.future_motor_accelerations, initial=0)
-    #     self.future_motor_positions = list(it.cumulative_trapezoid(_velocity, initial=0))
+    #     # Initialize lists
+    #     self.future_motor_accelerations = []
+    #     self.future_motor_positions = []
+    #     current_position = self.x_pivot
+    #     current_velocity = 0
+        
+    #     # Simulation time steps
+    #     for t in np.arange(0.0, duration+self.delta_t, self.delta_t):
+    #         # Convert linear velocity to angular velocity
+    #         omega = current_velocity * self.gear_ratio / self.pulley_radius
+            
+    #         # Calculate back EMF
+    #         V_bemf = Ke * omega * 0.5  # Reduced back EMF effect
+            
+    #         # Calculate motor current (V = IR + back_EMF)
+    #         I = (V_motor - V_bemf) / R
+    #         I = np.clip(I, -2.0, 2.0)  # Current limit for L298
+            
+    #         # Calculate motor torque
+    #         T_motor = Kt * I
+            
+    #         # Add friction effects (reduced for more movement)
+    #         T_viscous = self.Bv * omega * 0.5
+    #         T_coulomb = self.Tq * np.sign(omega) * 0.5 if abs(omega) > 1e-6 else 0
+    #         T_net = T_motor - T_viscous - T_coulomb
+            
+    #         # Convert torque to linear force through gear ratio and pulley
+    #         F_motor = T_net * self.gear_ratio / self.pulley_radius
+            
+    #         # Calculate linear acceleration (F = ma)
+    #         linear_accel = F_motor / cart_mass
+    #         linear_accel *= 0.1  # Increased scale factor for better visibility
+            
+    #         # Add boundary checks
+    #         if (current_position >= self.x_pivot_limit and direction > 0) or \
+    #            (current_position <= -self.x_pivot_limit and direction < 0):
+    #             linear_accel = 0
+    #             current_velocity = 0
+            
+    #         # Update states with slight damping
+    #         self.future_motor_accelerations.append(linear_accel)
+    #         current_velocity = current_velocity * 0.99 + linear_accel * self.delta_t  # Less damping
+    #         current_position += current_velocity * self.delta_t
+    #         self.future_motor_positions.append(current_position)
+        
+    #     # Debug prints
+    #     print(f"Direction: {'Left' if direction < 0 else 'Right'}")
+    #     print(f"Motor voltage: {V_motor:.2f}V")
+    #     print(f"Initial current: {I:.2f}A")
+    #     print(f"Initial force: {F_motor:.3f}N")
+    #     print(f"Initial acceleration: {self.future_motor_accelerations[0]:.3f} m/s²")
+    #     print(f"Position change: {self.future_motor_positions[-1] - self.x_pivot:.3f} m")
+
+
+
+    def update_motor_accelerations(self, direction, duration):
+        
+        # Your current implementation remains here
+        if direction == 'left':
+            direction = -1
+        else:
+            direction = 1
+
+        # Check if the motor should be blocked at the limit
+        if (self.x_pivot == self.x_pivot_limit and direction > 0) or \
+        (self.x_pivot == -self.x_pivot_limit and direction < 0):
+            print(f"🚨 BLOCKED MOVE: x_pivot={self.x_pivot}, direction={direction}")
+            return  # Stop movement at the boundary
+
+        a_m_1 = 0.05
+        a_m_2 = 0.05
+        t1 = duration/4
+        t2_d = duration/4
+        t2 = duration - t2_d
+
+        for t in np.arange(0.0, duration+self.delta_t, self.delta_t):
+            if self.x_pivot == self.x_pivot_limit and direction > 0:
+                c = 0  # Stop adding force when stuck at the right limit
+            elif self.x_pivot == -self.x_pivot_limit and direction < 0:
+                c = 0  # Stop adding force when stuck at the left limit
+            if t <= t1:
+                c = -4*direction*a_m_1/(t1*t1) * t * (t-t1)
+            elif t < t2 and t > t1:
+                c = 0 
+            elif t >= t2:
+                c = 4*direction*a_m_2/(t2_d*t2_d) * (t-t2) * (t-duration)
+            
+            self.future_motor_accelerations.append(c)
+        
+        _velocity = it.cumulative_trapezoid(self.future_motor_accelerations, initial=0)
+        self.future_motor_positions = list(it.cumulative_trapezoid(_velocity, initial=0))
     
     
     def get_theta_double_dot(self, theta, theta_dot, motor_force):
@@ -379,7 +387,6 @@ class DigitalTwin:
             self.x_pivot = -self.x_pivot_limit
         elif new_x_pivot > self.x_pivot_limit:
             self.x_pivot = self.x_pivot_limit
-            
         else:
             self.x_pivot = new_x_pivot
 

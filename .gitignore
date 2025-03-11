@@ -1,2 +1,3 @@
 .venv
 *.xlsx
+__pycache__/Digital_twin.cpython-312.pyc
