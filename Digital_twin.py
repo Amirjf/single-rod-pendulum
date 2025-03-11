@@ -129,6 +129,7 @@ class DigitalTwin:
         return a, b, c
 
     def perform_action(self, direction, duration):
+        print(f"🎮 PERFORM ACTION: direction={direction}, duration={duration}")
         # Send the command to the device.
         if self.device_connected:
             if direction == 'left':
@@ -141,10 +142,19 @@ class DigitalTwin:
 
     
     def update_motor_accelerations(self, direction, duration):
+        print(f"⚙️ UPDATE ACCEL: direction={direction}, duration={duration}")
+    
         if direction == 'left':
             direction = -1
         else:
             direction = 1
+
+        # Check if the motor should be blocked at the limit
+        if (self.x_pivot == self.x_pivot_limit and direction > 0) or \
+        (self.x_pivot == -self.x_pivot_limit and direction < 0):
+            print(f"🚨 BLOCKED MOVE: x_pivot={self.x_pivot}, direction={direction}")
+            return  # Stop movement at the boundary
+
 
         """
         Lab 1 & 3 bonus: Model the expected acceleration response of the motor.  
@@ -173,7 +183,7 @@ class DigitalTwin:
         self.future_motor_positions = list(it.cumulative_trapezoid(_velocity, initial=0))
     
     
-    def get_theta_double_dot(self, theta, theta_dot):
+    def get_theta_double_dot(self, theta, theta_dot, motor_force):
         """
         Calculate the angular acceleration (second derivative of theta) for the pendulum.
         
@@ -202,12 +212,15 @@ class DigitalTwin:
         # the pendulum should initially swing right (positive torque)
         # We negate the motor acceleration to get this correct behavior
 
-        # Check if motor is stuck at the limit
-        if (self.x_pivot == -self.x_pivot_limit and self.currentmotor_acceleration < 0) or \
-        (self.x_pivot == self.x_pivot_limit and self.currentmotor_acceleration > 0):
-            torque_motor = 0  # Completely remove motor effect
+        # Motor effect through gear ratio and pulley
+        if (self.x_pivot == -self.x_pivot_limit and motor_force < 0) or \
+        (self.x_pivot == self.x_pivot_limit and motor_force > 0):
+            print(f"🚨 BLOCKED MOTOR FORCE at x_pivot={self.x_pivot}, motor_force={motor_force}")
+            torque_motor = 0
         else:
+            # Convert linear force to torque through pendulum geometry
             torque_motor = (-self.a_m * self.currentmotor_acceleration / self.l) * np.cos(theta)
+            print(f"✅ MOTOR FORCE APPLIED: motor_force={motor_force}, torque_motor={torque_motor}")
 
         # torque_motor = (-self.a_m * self.currentmotor_acceleration / self.l) * np.cos(theta)
         
@@ -218,6 +231,7 @@ class DigitalTwin:
   
     def step(self):
         print(f"STEP: x_pivot={self.x_pivot}, Acceleration={self.currentmotor_acceleration}, Limit={self.x_pivot_limit}")
+        print(f"📌 BEFORE STEP: x_pivot={self.x_pivot}, Future_Positions={self.future_motor_positions}")
         # Get the predicted motor acceleration for the next step and the shift in x_pivot
         self.check_prediction_lists()
         self.currentmotor_acceleration = self.future_motor_accelerations.pop(0)
@@ -242,8 +256,11 @@ class DigitalTwin:
         else:
             self.x_pivot = new_x_pivot
 
+
+        print(f"📌 AFTER STEP: x_pivot={self.x_pivot}, Applied_Position_Change={new_x_pivot}")
+
         # Update the system state based on the action and model dynamics
-        self.theta_double_dot = self.get_theta_double_dot(self.theta, self.theta_dot)
+        self.theta_double_dot = self.get_theta_double_dot(self.theta, self.theta_dot, self.currentmotor_acceleration)
         self.theta += self.theta_dot * self.delta_t
         self.theta_dot += self.theta_double_dot * self.delta_t
         self.time += self.delta_t
