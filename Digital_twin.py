@@ -7,6 +7,7 @@ import math
 from scipy.integrate import cumulative_trapezoid
 import time
 import pandas as pd
+import csv
 
 class DigitalTwin:
     def __init__(self):
@@ -24,6 +25,7 @@ class DigitalTwin:
         self.theta_double_dot = 0.
         self.x_pivot = 0
         self.delta_t = 0.005  # Example value, adjust as needed in seconds
+        # self.delta_t = 0.0284  # Match sensor rate
         
         # Model parameters
         self.g = 9.8065     # Acceleration due to gravity (m/s^2)
@@ -33,8 +35,11 @@ class DigitalTwin:
         self.a_m = 2000     # Motor acceleration force tranfer coefficient
         self.future_motor_accelerations = []
         self.future_motor_positions = []
+        self.future_motor_velocities = []
         self.currentmotor_acceleration = 0.
+        self.currentmotor_velocity = 0.
         self.time = 0.
+        self.R_pulley = 0.1
         
         # Sensor data
         self.sensor_theta = 0
@@ -131,6 +136,134 @@ class DigitalTwin:
         if duration > 0:
             self.update_motor_accelerations(direction, duration/1000)
 
+    def update_motor_accelerations_real(self, direction, duration):
+        """
+        Compute acceleration using different time phases,
+        then integrate numerically using `cumulative_trapezoid()`.
+        """
+
+        if direction == 'left':
+            direction = -1
+        else:
+            direction = 1
+
+        # Define motor parameters
+        k = 0.0174  # Motor torque constant (N·m/A)
+        J = 8.5075e-7  # Moment of inertia (kg·m²)
+        R = 8.6538  # Motor resistance (Ω)
+        V_i = 12.0 * direction  # Input voltage (V)
+
+        # Define motion phases
+        t1 = duration / 4  # Acceleration phase duration
+        t2_d = duration / 4  # Deceleration phase duration
+        t2 = duration - t2_d  # Start of deceleration phase
+        tf = duration  # Total movement time
+        time_values = np.arange(0.0, tf + self.delta_t, self.delta_t)
+
+        # Initialize lists
+        self.future_motor_accelerations = []
+        omega_m = [0]  # Start with initial omega = 0
+        theta_m = [0]  # Start with initial theta = 0
+
+        # Compute acceleration separately for each phase
+        for t in time_values:
+            omega = omega_m[-1]  # Use last computed velocity
+
+            if t < t1:  # Acceleration phase
+                alpha_m = (k * (V_i - k * omega)) / (J * R)  # Compute acceleration
+            elif t1 <= t < t2:  # Constant velocity phase
+                alpha_m = 0  # No acceleration
+            else:  # Deceleration phase
+                alpha_m = (k * (-k * omega)) / (J * R)  # Slow down with back EMF
+
+            self.future_motor_accelerations.append(alpha_m)
+
+            # Compute velocity using trapezoidal integration
+            if len(self.future_motor_accelerations) > 1:
+                alpha_prev = self.future_motor_accelerations[-2]  # Previous acceleration
+                omega_next = omega + (self.delta_t / 2) * (alpha_prev + alpha_m)  # Trapezoidal integration
+            else:
+                omega_next = omega + alpha_m * self.delta_t  # Use Euler for the first step
+
+            omega_m.append(omega_next)
+
+            # Compute position using trapezoidal integration
+            if len(omega_m) > 1:
+                omega_prev = omega_m[-2]  # Previous velocity
+                theta_next = theta_m[-1] + (self.delta_t / 2) * (omega_prev + omega_next)
+            else:
+                theta_next = theta_m[-1] + omega_next * self.delta_t  # Use Euler for the first step
+
+            theta_m.append(theta_next)
+
+        # Store computed values
+        self.future_motor_velocities = omega_m[1:]  # Remove initial zero
+        self.future_motor_positions = theta_m[1:]  # Remove initial zero
+
+        # Save data to CSV
+        with open("motor_data.csv", mode="w", newline="") as file:
+            writer = csv.writer(file)
+            writer.writerow(["time_s", "alpha_m_rad_s2", "omega_m_rad_s", "theta_m_rad"])
+            for i in range(len(time_values)):
+                writer.writerow([
+                    time_values[i], 
+                    self.future_motor_accelerations[i], 
+                    self.future_motor_velocities[i], 
+                    self.future_motor_positions[i]
+                ])
+
+        print("Motor data saved to motor_data.csv")
+
+    # def update_motor_accelerations_control(self, direction, duration):
+
+    #     if direction == 'left':
+    #         direction = -1
+    #     else:
+    #         direction = 1
+
+    #     # Define motion parameters with better phase naming
+    #     a_m = 0.05  # Maximum angular acceleration (rad/s^2)
+    #     t0 = 0  # Start of motion
+    #     t1 = duration / 4  # End of acceleration phase
+    #     t2 = duration - (duration / 4)  # Start of deceleration phase (75% of total time)
+    #     tf = duration  # Total movement time
+    #     time_values = np.arange(0.0, duration + self.delta_t, self.delta_t)
+
+
+    #     # Compute acceleration, velocity, and position
+    #     for t in np.arange(t0, tf + self.delta_t, self.delta_t):
+    #         if t < t1:  # Acceleration phase (0 to t1)
+    #             a_theta = direction * (-4 * a_m / (t1**2)) * t * (t - t1)
+    #             v_theta = direction * ((2 * a_m / t1) * t**2 - (4/3) * (a_m / t1**2) * t**3)
+    #             theta = direction * ((2/3) * (a_m / t1) * t**3 - (a_m / (3 * t1**2)) * t**4)  
+    #         elif t1 <= t < t2:  # Constant velocity phase (t1 to t2)
+    #             a_theta = 0  # No acceleration
+    #             v_theta = direction * (2 * a_m * t1 / 3)  # Maximum velocity
+    #             theta = direction * (v_theta * self.delta_t)  # Continue linear motion
+    #         else:  # Deceleration phase (t2 to tf)
+    #             a_theta = direction * (4 * a_m / (t2**2)) * t * (t - t2)
+    #             v_theta = direction * (- (2 * a_m / t1) * t**2 + (4/3) * (a_m / t1**2) * t**3)
+    #             theta = direction * (- (2/3) * (a_m / t1) * t**3 + (a_m / (3 * t1**2)) * t**4)
+
+    #         # Store values for future use
+    #         self.future_motor_accelerations.append(a_theta)
+    #         self.future_motor_velocities.append(v_theta)
+    #         self.future_motor_positions.append(theta)
+
+    #     # Save acceleration, velocity, and position to CSV
+    #     with open("motor_data.csv", mode="w", newline="") as file:
+    #         writer = csv.writer(file)
+    #         writer.writerow(["time_s", "alpha_m_rad_s2", "omega_m_rad_s", "theta_m_rad"])
+    #         for i in range(len(time_values) - 2):  # Avoid index issues
+    #             writer.writerow([
+    #                 time_values[i], 
+    #                 self.future_motor_accelerations[i], 
+    #                 self.future_motor_velocities[i], 
+    #                 self.future_motor_positions[i]
+    #             ])
+
+    #     print("Motor data saved to motor_data.csv")
+
     def update_motor_accelerations(self, direction, duration):
         if direction == 'left':
             direction = -1
@@ -145,6 +278,9 @@ class DigitalTwin:
         t1 = duration/4
         t2_d = duration/4
         t2 = duration - t2_d
+
+        time_values = np.arange(0.0, duration + self.delta_t, self.delta_t)
+
         for t in np.arange(0.0, duration+self.delta_t, self.delta_t):
             if t <= t1:
                 c = -4*direction*a_m_1/(t1*t1) * t * (t-t1)
@@ -157,6 +293,15 @@ class DigitalTwin:
         
         _velocity = cumulative_trapezoid(self.future_motor_accelerations,initial=0)
         self.future_motor_positions = list(cumulative_trapezoid(_velocity,initial=0))
+
+        # Save acceleration, velocity, and position to CSV
+        with open("motor_data.csv", mode="w", newline="") as file:
+            writer = csv.writer(file)
+            writer.writerow(["time_s", "alpha_m_rad_s2", "omega_m_rad_s", "theta_m_rad"])
+            for i in range(len(time_values) - 2):  # Avoid index issues
+                writer.writerow([time_values[i], self.future_motor_accelerations[i], _velocity[i], self.future_motor_positions[i]])
+
+    print("Motor data saved to motor_data.csv")
         
     def get_theta_double_dot(self, theta, theta_dot):
         """
@@ -165,8 +310,8 @@ class DigitalTwin:
         You should include the following constants as well: c_air, c_c, a_m, l and g. 
         """
         torque_gravity = -(self.g / self.l) * np.sin(theta)
-        torque_air_friction = -self.c_air * theta_dot
-        torque_coulomb_friction = -self.c_c * theta_dot
+        torque_air_friction = -(self.c_air / (self.l**2)) * theta_dot
+        torque_coulomb_friction = -(self.c_c / (self.l**2)) * theta_dot
         torque_motor = (-self.a_m * self.currentmotor_acceleration / self.l) * np.cos(theta)
         angular_acceleration = torque_gravity + torque_air_friction + torque_coulomb_friction + torque_motor
         return angular_acceleration
@@ -176,14 +321,18 @@ class DigitalTwin:
         self.check_prediction_lists()
         #print(self.future_motor_accelerations)
         self.currentmotor_acceleration = self.future_motor_accelerations.pop(0)
-        self.x_pivot = self.x_pivot + self.future_motor_positions.pop(0)/3
+        self.currentmotor_velocity = self.future_motor_velocities.pop(0)
+        print(f"future_motor_positions[0]: {self.future_motor_positions[0]}")
+        print(f"x_pivot Before: {self.x_pivot}")
+        self.x_pivot = self.x_pivot + self.R_pulley * self.future_motor_positions.pop(0)
+        print(f"x_pivot After: {self.x_pivot}")
         # Update the system state based on the action and model dynamics
         self.theta_double_dot = self.get_theta_double_dot(self.theta, self.theta_dot)
         self.theta += self.theta_dot * self.delta_t
         self.theta_dot += self.theta_double_dot * self.delta_t
         self.time += self.delta_t
         self.steps += 1
-        return self.theta, self.theta_dot, self.x_pivot
+        return self.theta, self.theta_dot, self.x_pivot, self.currentmotor_acceleration
         
     def draw_line_and_circles(self, colour, start_pos, end_pos, line_width=5, circle_radius=9):
         pygame.draw.line(self.screen, colour, start_pos, end_pos, line_width)
@@ -205,5 +354,7 @@ class DigitalTwin:
     def check_prediction_lists(self):
         if len(self.future_motor_accelerations) == 0:
             self.future_motor_accelerations = [0]
+        if len(self.future_motor_velocities) == 0:
+            self.future_motor_velocities = [0]
         if len(self.future_motor_positions) == 0:
             self.future_motor_positions = [0]
