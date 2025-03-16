@@ -15,14 +15,14 @@ if __name__=='__main__':
         running = True
         while running:
             
-            theta, theta_dot, x_pivot = digital_twin.step()
+            theta, theta_dot, x_pivot, currentmotor_acceleration = digital_twin.step()
             digital_twin.render(theta, x_pivot)
             time.sleep(digital_twin.delta_t)
 
-            # Save the theta, theta_dot, x_pivot to plot later
+            # Save the theta, theta_dot, x_pivot, and acceleration to plot later
             with open('recording.csv', mode='a', newline='') as file:
                 writer = csv.writer(file)
-                writer.writerow([time.time(), theta, theta_dot, x_pivot])
+                writer.writerow([time.time(), theta, theta_dot, x_pivot, currentmotor_acceleration])
             
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -45,7 +45,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 # Load data
-data = pd.read_csv('recording.csv', header=None, names=['time', 'theta', 'theta_dot', 'x_pivot'])
+# Load data
+data = pd.read_csv('recording.csv', header=None, names=['time', 'theta', 'theta_dot', 'x_pivot', 'acceleration'])
 
 # Create figure and axis
 fig, ax1 = plt.subplots(figsize=(10, 5))
@@ -62,13 +63,62 @@ ax2.set_ylabel('theta_dot', color='red')
 ax2.plot(data['time'], data['theta_dot'], label='theta_dot', color='red')
 ax2.tick_params(axis='y', labelcolor='red')
 
+# Third y-axis for acceleration
+ax3 = ax1.twinx()
+ax3.spines["right"].set_position(("outward", 60))  # Offset third y-axis
+ax3.set_ylabel('Acceleration', color='green')
+ax3.plot(data['time'], data['acceleration'], label='Acceleration', color='green')
+ax3.tick_params(axis='y', labelcolor='green')
+
 # Title and Grid
-plt.title('x_pivot and theta_dot over Time')
+plt.title('x_pivot, theta_dot, and Acceleration over Time')
 ax1.grid(True)
 
 # Legends
 ax1.legend(loc='upper left')
 ax2.legend(loc='upper right')
+ax3.legend(loc='lower right')
 
 # Show plot
+plt.show()
+
+
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# Load the data from CSV
+df = pd.read_csv("motor_data.csv")
+
+# Create subplots
+fig, axs = plt.subplots(3, 1, figsize=(10, 8))
+
+# Adjust spacing between subplots
+plt.subplots_adjust(hspace=0.5) 
+
+# Acceleration Plot
+axs[0].plot(df["time_s"], df["alpha_m_rad_s2"], label="Motor Acceleration (α_m)", color='blue')
+axs[0].set_ylabel("α_m (rad/s²)")
+axs[0].set_title("Motor Acceleration Over Time")
+axs[0].legend()
+axs[0].grid()
+
+# Velocity Plot
+axs[1].plot(df["time_s"], df["omega_m_rad_s"], label="Motor Velocity (ω_m)", color='red')
+axs[1].set_ylabel("ω_m (rad/s)")
+axs[1].set_title("Motor Velocity Over Time") 
+axs[1].legend()
+axs[1].grid()
+
+# Position Plot
+axs[2].plot(df["time_s"], df["theta_m_rad"], label="Motor Angle (θ_m)", color='green')
+axs[2].set_ylabel("θ_m (radians)")
+axs[2].set_xlabel("Time (s)")
+axs[2].set_title("Motor Angle Displacement Over Time")
+axs[2].legend()
+axs[2].grid()
+
+# Overall Title
+plt.suptitle("Motor Acceleration, Velocity, and Angle")
+
+# Show the plot
 plt.show()
