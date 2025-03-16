@@ -122,3 +122,48 @@ plt.suptitle("Motor Acceleration, Velocity, and Angle")
 
 # Show the plot
 plt.show()
+
+# Load the data from CSV
+state_df = pd.read_csv("recording.csv", header=None, names=["time", "theta", "theta_dot", "x_pivot", "acceleration"])
+
+# Debugging: Print min/max values to check x_pivot
+print("x_pivot Min:", state_df["x_pivot"].min(), "Max:", state_df["x_pivot"].max())
+
+# Create subplots for State-Space Visualization
+fig, axs = plt.subplots(4, 1, figsize=(10, 8), constrained_layout=True)
+
+# Time-domain plot for Angle (theta)
+axs[0].plot(state_df["time"], state_df["theta"], label="Angle (θ)", color='blue')
+axs[0].set_ylabel("θ (radians)")
+axs[0].set_title("Pendulum Angle Over Time")
+axs[0].legend()
+axs[0].grid()
+
+# Time-domain plot for Angular Velocity (theta_dot)
+axs[1].plot(state_df["time"], state_df["theta_dot"], label="Angular Velocity (θ̇)", color='red')
+axs[1].set_ylabel("θ̇ (rad/s)")
+axs[1].set_title("Pendulum Angular Velocity Over Time") 
+axs[1].legend()
+axs[1].grid()
+
+# Phase Portrait: Theta vs Theta_dot
+axs[2].plot(state_df["theta"], state_df["theta_dot"], label="State-Space Trajectory", color='green')
+axs[2].set_xlabel("θ (radians)")
+axs[2].set_ylabel("θ̇ (rad/s)")
+axs[2].set_title("State-Space Representation (θ vs. θ̇)")
+axs[2].legend()
+axs[2].grid()
+
+# Plot x_pivot over time
+axs[3].plot(state_df["time"], state_df["x_pivot"], label="x_pivot", color='purple')
+axs[3].set_ylabel("x_pivot (m)")
+axs[3].set_title("Motor Position Over Time")
+axs[3].legend()
+axs[3].grid()
+
+# Adjust layout and spacing
+plt.tight_layout()
+
+# Save figure
+plt.savefig("state_space_analysis.png")
+plt.show()
