@@ -269,50 +269,79 @@ class DigitalTwin:
         return self.theta, self.theta_dot, self.x_pivot, self.currentmotor_acceleration
         
     def draw_line_and_circles(self, colour, start_pos, end_pos, line_width=5, circle_radius=9):
+        # Draw the line
         pygame.draw.line(self.screen, colour, start_pos, end_pos, line_width)
-        pygame.draw.circle(self.screen, colour, start_pos, circle_radius)
+        
+        # Draw square for cart (pivot point)
+        square_size = 20  # Increased size of the square
+        pygame.draw.rect(self.screen, colour, 
+                        (start_pos[0] - square_size//2, 
+                         start_pos[1] - square_size//2,
+                         square_size, square_size), 2)  # Added width=2 for outline only
+        
+        # Draw circle for pendulum joint
         pygame.draw.circle(self.screen, colour, end_pos, circle_radius)
 
     def draw_pendulum(self, colour ,x, y, x_pivot):
         self.draw_line_and_circles(colour, [x_pivot+500, 400], [y+x_pivot+500, x+400])
         
-    def render(self, theta, x_pivot, last_action="None"):  # Add last_action with default value
-        """
-        Render the pendulum system and overlay live information at the top.
-        """
+    def draw_info_panel(self, surface, elapsed_time, theta, theta_dot, x_pivot, motor_acceleration, last_action):
+        """Draw semi-transparent info panel with system information"""
+        # Create semi-transparent surface with increased width
+        info_surface = pygame.Surface((400, 150), pygame.SRCALPHA)
+        pygame.draw.rect(info_surface, (0, 0, 0, 128), (0, 0, 400, 150))
+        
+        # Draw data with modern font
+        font = pygame.font.Font(None, 24)
+        text_color = (255, 255, 255)  # White text for better contrast
+        
+        text_lines = [
+            f"Time Elapsed: {elapsed_time:.2f} s",
+            f"Pendulum Angle: {np.degrees(theta):.1f}°",
+            f"Angular Velocity: {theta_dot:.2f} rad/s",
+            f"Cart Position: {x_pivot:.2f} cm",
+            f"Motor Acceleration: {motor_acceleration:.2f} m/s²",
+            f"Last Action: {last_action}"
+        ]
+        
+        for i, line in enumerate(text_lines):
+            text_surface = font.render(line, True, text_color)
+            info_surface.blit(text_surface, (10, 10 + i * 20))
+        
+        surface.blit(info_surface, (20, 10))
 
+    def render(self, theta, x_pivot, last_action="None"):
+        """
+        Render the pendulum system with enhanced visualization features.
+        """
         # Ensure self.start_time is set when simulation begins
         if self.start_time == 0:
-            self.start_time = time.time()  # Set the start time when first render() runs
+            self.start_time = time.time()
 
         # Clear the screen (white background)
         self.screen.fill((255, 255, 255))
+
+        # Draw grid first (as background)
+        self.draw_grid(self.screen)
 
         # Draw pendulum
         l = 100  # Length of the pendulum
         self.draw_pendulum((0, 0, 0), math.cos(theta) * l, math.sin(theta) * l, x_pivot)
 
         # Draw black line and circles for horizontal axis
-        self.draw_line_and_circles((0, 0, 0), [400, 400], [600, 400])
+        pygame.draw.line(self.screen, (0, 0, 0), [400, 400], [600, 400], 5)
+        # Draw filled circles at both ends
+        circle_radius = 9
+        pygame.draw.circle(self.screen, (0, 0, 0), (400, 400), circle_radius)
+        pygame.draw.circle(self.screen, (0, 0, 0), (600, 400), circle_radius)
 
-        # === 🖥️ Overlay Live Info at the Top ===
-        font = pygame.font.Font(None, 24)  # Font size 24 for clarity
-        text_color = (0, 0, 0)  # Black text for readability
+        # Draw indicators (gravity arrow, cart center, auto-stabilization)
+        self.draw_indicators(self.screen, theta, x_pivot, False)  # Replace False with actual auto-stabilization state
 
-        elapsed_time = time.time() - self.start_time  # Time since the simulation started
-        text_lines = [
-            f"Time Elapsed: {elapsed_time:.2f} s",
-            f"Pendulum Angle (theta): {theta:.2f} rad",
-            f"Angular Velocity (theta dot): {self.theta_dot:.2f} rad/s",
-            f"Cart Position (x): {x_pivot:.2f} cm",
-            f"Motor Acceleration: {self.currentmotor_acceleration:.2f} m/s²",
-            f"Last Action: {last_action}"  # Display last action
-        ]
-
-        # Draw each line of text at the top
-        for i, line in enumerate(text_lines):
-            text_surface = font.render(line, True, text_color)
-            self.screen.blit(text_surface, (20, 10 + i * 20))  # Positioning at top-left
+        # Draw semi-transparent info panel
+        elapsed_time = time.time() - self.start_time
+        self.draw_info_panel(self.screen, elapsed_time, theta, self.theta_dot, x_pivot, 
+                           self.currentmotor_acceleration, last_action)
 
         # Update the display
         pygame.display.flip()
@@ -324,3 +353,47 @@ class DigitalTwin:
             self.future_motor_velocities = [0]
         if len(self.future_motor_positions) == 0:
             self.future_motor_positions = [0]
+
+    def draw_arrow(self, surface, color, start_pos, end_pos, width=5):
+        """Draw an arrow from start_pos to end_pos"""
+        # Draw the main line
+        pygame.draw.line(surface, color, start_pos, end_pos, width)
+        
+        # Calculate arrow head points
+        angle = math.atan2(end_pos[1] - start_pos[1], end_pos[0] - start_pos[0])
+        arrow_length = 20
+        arrow_width = 10
+        
+        # Calculate arrow head points
+        arrow_point1 = (
+            end_pos[0] - arrow_length * math.cos(angle - math.pi/6),
+            end_pos[1] - arrow_length * math.sin(angle - math.pi/6)
+        )
+        arrow_point2 = (
+            end_pos[0] - arrow_length * math.cos(angle + math.pi/6),
+            end_pos[1] - arrow_length * math.sin(angle + math.pi/6)
+        )
+        
+        # Draw arrow head
+        pygame.draw.polygon(surface, color, [end_pos, arrow_point1, arrow_point2])
+
+    def draw_indicators(self, surface, theta, x_pivot, auto_stabilization):
+        # Draw cart center indicator as a square
+        cart_center = (500 + x_pivot, 400)
+        square_size = 6  # Size of the square
+        pygame.draw.rect(surface, (0, 255, 0), 
+                        (cart_center[0] - square_size//2, 
+                         cart_center[1] - square_size//2,
+                         square_size, square_size))
+
+    def draw_grid(self, surface):
+        # Draw vertical grid lines
+        for x in range(0, 1000, 50):
+            pygame.draw.line(surface, (200, 200, 200), (x, 0), (x, 800))
+        
+        # Draw horizontal grid lines
+        for y in range(0, 800, 50):
+            pygame.draw.line(surface, (200, 200, 200), (0, y), (1000, y))
+        
+        # Draw center reference line
+        pygame.draw.line(surface, (255, 0, 0), (500, 0), (500, 800), 2)
