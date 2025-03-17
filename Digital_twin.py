@@ -13,6 +13,7 @@ class DigitalTwin:
     def __init__(self):
         # Initialize Pygame parameters
         self.screen = None
+        self.start_time = 0  # Store when the simulation starts
 
         # Initialize serial communication parameters
         self.ser = None
@@ -138,81 +139,63 @@ class DigitalTwin:
 
     def update_motor_accelerations_real(self, direction, duration):
         """
-        Compute acceleration using different time phases,
-        then integrate numerically using `cumulative_trapezoid()`.
+        Compute motor acceleration using real physics (motor torque equation),
+        and ensure proper deceleration using active braking.
         """
 
-        if direction == 'left':
-            direction = -1
-        else:
-            direction = 1
+        # Convert direction to numerical value
+        direction = -1 if direction == 'left' else 1
 
-        # Define motor parameters
+        # Motor parameters
         k = 0.0174  # Motor torque constant (N·m/A)
-        J = 8.5075e-7  # Moment of inertia (kg·m²)
-        R = 8.6538  # Motor resistance (Ω)
-        V_i = 12.0 * direction  # Input voltage (V)
+        J = 1  # Moment of inertia (kg·m²)
+        R = 4.18  # Motor resistance (Ω)
+        V_i = 12.0  # Input voltage (V)
 
         # Define motion phases
-        t1 = duration / 4  # Acceleration phase duration
-        t2_d = duration / 4  # Deceleration phase duration
-        t2 = duration - t2_d  # Start of deceleration phase
+        t1 = duration / 4  # Acceleration phase
+        t2_d = duration / 4  # Deceleration phase
+        t2 = duration - t2_d  # Start of deceleration
         tf = duration  # Total movement time
         time_values = np.arange(0.0, tf + self.delta_t, self.delta_t)
 
-        # Initialize lists
-        self.future_motor_accelerations = []
-        omega_m = [0]  # Start with initial omega = 0
-        theta_m = [0]  # Start with initial theta = 0
+        omega_m = [0.0]  # Initial angular velocity
+        theta_m = [0.0]  # Initial angular position
 
-        # Compute acceleration separately for each phase
+        # Compute acceleration, velocity, and position for each time step
         for t in time_values:
             omega = omega_m[-1]  # Use last computed velocity
 
+            # Compute acceleration based on phase
             if t < t1:  # Acceleration phase
-                alpha_m = (k * (V_i - k * omega)) / (J * R)  # Compute acceleration
+                a_m_1 =  (k * (V_i - k * omega)) / (J * R)
+                print(omega)
+                alpha_m = -4*direction*a_m_1/(t1*t1) * t * (t-t1)
             elif t1 <= t < t2:  # Constant velocity phase
-                alpha_m = 0  # No acceleration
-            else:  # Deceleration phase
-                alpha_m = (k * (-k * omega)) / (J * R)  # Slow down with back EMF
+                alpha_m = 0.0
+            else:  # Deceleration phase (Active braking)
+                a_m_2 = (k * (V_i + k * omega)) / (J * R)  # Apply braking force
+                print(omega)
+                alpha_m  = 4*direction*a_m_2/(t2_d*t2_d) * (t-t2) * (t-duration)
+                
 
             self.future_motor_accelerations.append(alpha_m)
 
-            # Compute velocity using trapezoidal integration
-            if len(self.future_motor_accelerations) > 1:
-                alpha_prev = self.future_motor_accelerations[-2]  # Previous acceleration
-                omega_next = omega + (self.delta_t / 2) * (alpha_prev + alpha_m)  # Trapezoidal integration
-            else:
-                omega_next = omega + alpha_m * self.delta_t  # Use Euler for the first step
-
+            # Update omega using Euler integration
+            omega_next = omega + alpha_m * self.delta_t
             omega_m.append(omega_next)
 
-            # Compute position using trapezoidal integration
-            if len(omega_m) > 1:
-                omega_prev = omega_m[-2]  # Previous velocity
-                theta_next = theta_m[-1] + (self.delta_t / 2) * (omega_prev + omega_next)
-            else:
-                theta_next = theta_m[-1] + omega_next * self.delta_t  # Use Euler for the first step
 
-            theta_m.append(theta_next)
-
-        # Store computed values
+        # Store values
         self.future_motor_velocities = omega_m[1:]  # Remove initial zero
-        self.future_motor_positions = theta_m[1:]  # Remove initial zero
+        self.future_motor_positions = list(cumulative_trapezoid(self.future_motor_velocities, initial=0))
 
-        # Save data to CSV
+        # Save acceleration, velocity, and position to CSV
         with open("motor_data.csv", mode="w", newline="") as file:
             writer = csv.writer(file)
             writer.writerow(["time_s", "alpha_m_rad_s2", "omega_m_rad_s", "theta_m_rad"])
-            for i in range(len(time_values)):
-                writer.writerow([
-                    time_values[i], 
-                    self.future_motor_accelerations[i], 
-                    self.future_motor_velocities[i], 
-                    self.future_motor_positions[i]
-                ])
-
-        print("Motor data saved to motor_data.csv")
+            for i in range(len(time_values) - 2):  # Avoid index issues
+                writer.writerow([time_values[i], self.future_motor_accelerations[i], self.future_motor_velocities[i], self.future_motor_positions[i]])
 
     # def update_motor_accelerations_control(self, direction, duration):
 
@@ -342,13 +325,45 @@ class DigitalTwin:
     def draw_pendulum(self, colour ,x, y, x_pivot):
         self.draw_line_and_circles(colour, [x_pivot+500, 400], [y+x_pivot+500, x+400])
         
-    def render(self, theta, x_pivot):
+    def render(self, theta, x_pivot, last_action="None"):  # Add last_action with default value
+        """
+        Render the pendulum system and overlay live information at the top.
+        """
+
+        # Ensure self.start_time is set when simulation begins
+        if self.start_time == 0:
+            self.start_time = time.time()  # Set the start time when first render() runs
+
+        # Clear the screen (white background)
         self.screen.fill((255, 255, 255))
-        # Drawing length of the pendulum
-        l = 100
-        self.draw_pendulum((0,0,0),math.cos(theta)*l,math.sin(theta)*l,x_pivot)
+
+        # Draw pendulum
+        l = 100  # Length of the pendulum
+        self.draw_pendulum((0, 0, 0), math.cos(theta) * l, math.sin(theta) * l, x_pivot)
+
         # Draw black line and circles for horizontal axis
         self.draw_line_and_circles((0, 0, 0), [400, 400], [600, 400])
+
+        # === 🖥️ Overlay Live Info at the Top ===
+        font = pygame.font.Font(None, 24)  # Font size 24 for clarity
+        text_color = (0, 0, 0)  # Black text for readability
+
+        elapsed_time = time.time() - self.start_time  # Time since the simulation started
+        text_lines = [
+            f"Time Elapsed: {elapsed_time:.2f} s",
+            f"Pendulum Angle (theta): {theta:.2f} rad",
+            f"Angular Velocity (theta dot): {self.theta_dot:.2f} rad/s",
+            f"Cart Position (x): {x_pivot:.2f} m",
+            f"Motor Acceleration: {self.currentmotor_acceleration:.2f} m/s²",
+            f"Last Action: {last_action}"  # Display last action
+        ]
+
+        # Draw each line of text at the top
+        for i, line in enumerate(text_lines):
+            text_surface = font.render(line, True, text_color)
+            self.screen.blit(text_surface, (20, 10 + i * 20))  # Positioning at top-left
+
+        # Update the display
         pygame.display.flip()
 
     def check_prediction_lists(self):

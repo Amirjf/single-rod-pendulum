@@ -3,41 +3,50 @@ import pygame
 from Digital_twin import DigitalTwin
 import csv
 
-# Before starting run pip install -r requirements.txt
+# Before starting run: pip install -r requirements.txt
 
 # Clear the contents of the recording.csv file
 with open('recording.csv', mode='w', newline='') as file:
     file.truncate()
 
 digital_twin = DigitalTwin()
-        
-if __name__=='__main__':
-        running = True
-        while running:
-            
-            theta, theta_dot, x_pivot, currentmotor_acceleration = digital_twin.step()
-            digital_twin.render(theta, x_pivot)
-            time.sleep(digital_twin.delta_t)
 
-            # Save the theta, theta_dot, x_pivot, and acceleration to plot later
-            with open('recording.csv', mode='a', newline='') as file:
-                writer = csv.writer(file)
-                writer.writerow([time.time(), theta, theta_dot, x_pivot, currentmotor_acceleration])
-            
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    running = False
-                elif event.type == pygame.KEYDOWN:
-                    if event.key in digital_twin.actions:
-                        direction, duration = digital_twin.actions[event.key]
-                        digital_twin.perform_action(direction, duration)
-                    elif event.key == pygame.K_r:
-                            digital_twin = DigitalTwin()  # Restart the system
-                            print("System restarted")
-                    elif event.key == pygame.K_ESCAPE:
-                        running = False # Quit the simulation
+if __name__ == '__main__':
+    running = True
+    last_action = "None"  # Track the last action performed
 
-        pygame.quit()
+    while running:
+        # Step through simulation
+        theta, theta_dot, x_pivot, currentmotor_acceleration = digital_twin.step()
+
+        # Render with updated information (pass last_action)
+        digital_twin.render(theta, x_pivot, last_action) # Update to include action tracking
+
+        # Sleep for time step
+        time.sleep(digital_twin.delta_t)
+
+        # Save the theta, theta_dot, x_pivot, and acceleration to CSV
+        with open('recording.csv', mode='a', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow([time.time(), theta, theta_dot, x_pivot, currentmotor_acceleration])
+
+        # Handle Pygame events
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+            elif event.type == pygame.KEYDOWN:
+                if event.key in digital_twin.actions:
+                    direction, duration = digital_twin.actions[event.key]
+                    digital_twin.perform_action(direction, duration)
+                    last_action = f"{direction.capitalize()} ({duration} ms)"  # Track last action
+                elif event.key == pygame.K_r:
+                    digital_twin = DigitalTwin()  # Restart the system
+                    last_action = "System Restarted"
+                    print("System restarted")
+                elif event.key == pygame.K_ESCAPE:
+                    running = False  # Quit the simulation
+
+    pygame.quit()
 
 # Plot the data
 # Load the data from the CSV file
