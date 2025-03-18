@@ -11,3 +11,4 @@ scipy==1.15.2
 serial==0.0.97
 six==1.17.0
 tzdata==2025.1
+graphviz==0.20.1
