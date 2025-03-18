@@ -146,6 +146,9 @@ class DigitalTwin:
         J = 8.5075e-6                                                       # Moment of inertia (kg·m²)
         R = 8.18                                                            # Motor resistance (Ω)
         V_i = 12.0                                                          # Input voltage (V)
+        B_v = 1.5e-8                                                        # Viscous damping coefficient (kg·m²/s)
+        T_q = 0.0                                                           # Load torque (assuming no external forces for now)
+
 
         t1 = duration / 4                                                   # Acceleration phase
         t2_d = duration / 4                                                 # Deceleration phase
@@ -157,14 +160,13 @@ class DigitalTwin:
         # Calculate motor acceleration
         for t in time_values:
             omega = omega_m[-1]
+            alpha_m = (k * (V_i - k * omega)) / (J * R) - (B_v * omega) / J - T_q / J # Motor acceleration
             if t < t1:                                                      # Accelerate
-                a_m_1 = (k * (V_i - k * omega)) / (J * R)
-                alpha_m = -4*direction*a_m_1/(t1*t1) * t * (t-t1)
+                alpha_m = -4*direction*alpha_m/(t1*t1) * t * (t-t1)
             elif t1 <= t < t2:                                             # Coast
                 alpha_m = 0.0
             else:                                                          # Brake
-                a_m_2 = (k * (V_i + k * omega)) / (J * R)
-                alpha_m = 4*direction*a_m_2/(t2_d*t2_d) * (t-t2) * (t-duration)
+                alpha_m = 4*direction*alpha_m/(t2_d*t2_d) * (t-t2) * (t-duration)
 
             self.future_motor_accelerations.append(alpha_m)
             omega_m.append(omega + alpha_m * self.delta_t)                 # Euler integration
