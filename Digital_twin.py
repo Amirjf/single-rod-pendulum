@@ -13,11 +13,8 @@ class DigitalTwin:
     def __init__(self):
         # Initialize Pygame parameters
         self.screen = None
-        pygame.init()
-        self.screen = pygame.display.set_mode([1000, 600])
-        self.start_time = 0
 
-        # Communication
+        # Initialize serial communication parameters
         self.ser = None
         self.device_connected = False
 
@@ -30,7 +27,7 @@ class DigitalTwin:
         self.delta_t = 0.005                                                 # Time step in seconds
         # self.delta_t = 0.0284                                              # Match sensor rate
         
-        # Physical parameters
+        # Models parameters
         self.g = 9.8065                                                      # Gravity (m/s^2)
         self.l = 0.3                                                         # Pendulum length (m)
         self.c_air = 0.005                                                   # Air friction coef
@@ -40,8 +37,6 @@ class DigitalTwin:
         self.mp = 1                                                          # Pendulum mass (kg)
         self.I = 0.00                                                        # Moment of inertia (kg·m²)
         self.R_pulley = 0.05                                                 # Pulley radius (m)
-        
-        # Motor state
         self.future_motor_accelerations = []
         self.future_motor_positions = []
         self.future_motor_velocities = []
@@ -71,10 +66,19 @@ class DigitalTwin:
         # Recording
         self.recording = False
         self.writer = None
-
+        self.start_time = 0
         self.df = None
 
-    def connect_device(self, port='COM3', baudrate=115200):                  # Setup serial connection
+        # Initialize a pygame window
+        self.initialize_pygame_window()
+
+    def initialize_pygame_window(self):
+        # Set up the drawing window
+        pygame.init()
+        self.screen = pygame.display.set_mode([1000, 600])
+
+    def connect_device(self, port='COM3', baudrate=115200):
+        # Establish a serial connection for sensor data                  # Setup serial connection
         self.ser = serial.Serial(port=port, baudrate=baudrate, timeout=0, writeTimeout=0)
         self.device_connected = True
         print("Connected to: " + self.ser.portstr)
@@ -127,7 +131,8 @@ class DigitalTwin:
                 self.df["theta"].pop(i), 
                 self.df["x_pivot"].pop(i))
 
-    def perform_action(self, direction, duration):                           # Execute motor command
+    def perform_action(self, direction, duration):
+        # Send the command to the device.                           # Execute motor command
         if self.device_connected:
             d = -duration if direction == 'left' else duration
             self.ser.write(str(d).encode())
