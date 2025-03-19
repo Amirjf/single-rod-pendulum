@@ -2,6 +2,8 @@ import time
 import pygame
 from Digital_twin import DigitalTwin
 import csv
+import pandas as pd
+import matplotlib.pyplot as plt
 
 # Before starting run: pip install -r requirements.txt
 
@@ -48,131 +50,78 @@ if __name__ == '__main__':
 
     pygame.quit()
 
-# Plot the data
-# Load the data from the CSV file
-import pandas as pd
-import matplotlib.pyplot as plt
 
-# Load data
-# Load data
-data = pd.read_csv('recording.csv', header=None, names=['time', 'theta', 'theta_dot', 'x_pivot', 'acceleration'])
+def plot_motor_dynamics(csv_file, save_path="motor_Acc_vel_angle.png"):
+    df = pd.read_csv(csv_file)
 
-# Create figure and axis
-fig, ax1 = plt.subplots(figsize=(10, 5))
+    fig, axs = plt.subplots(3, 1, figsize=(10, 8), constrained_layout=True)
 
-# First y-axis for x_pivot
-ax1.set_xlabel('Time (s)')
-ax1.set_ylabel('x_pivot', color='blue')
-ax1.plot(data['time'], data['x_pivot'], label='x_pivot', color='blue')
-ax1.tick_params(axis='y', labelcolor='blue')
+    # Motor Acceleration
+    axs[0].plot(df["time_s"], df["alpha_m_rad_s2"], label="Motor Acceleration (α_m)", color='blue')
+    axs[0].set_ylabel("α_m (rad/s²)")
+    axs[0].set_title("Motor Acceleration Over Time")
+    axs[0].legend()
+    axs[0].grid()
 
-# Second y-axis for theta_dot
-ax2 = ax1.twinx()
-ax2.set_ylabel('theta_dot', color='red')
-ax2.plot(data['time'], data['theta_dot'], label='theta_dot', color='red')
-ax2.tick_params(axis='y', labelcolor='red')
+    # Motor Velocity
+    axs[1].plot(df["time_s"], df["omega_m_rad_s"], label="Motor Velocity (ω_m)", color='red')
+    axs[1].set_ylabel("ω_m (rad/s)")
+    axs[1].set_title("Motor Velocity Over Time") 
+    axs[1].legend()
+    axs[1].grid()
 
-# Third y-axis for acceleration
-ax3 = ax1.twinx()
-ax3.spines["right"].set_position(("outward", 60))  # Offset third y-axis
-ax3.set_ylabel('Acceleration', color='green')
-ax3.plot(data['time'], data['acceleration'], label='Acceleration', color='green')
-ax3.tick_params(axis='y', labelcolor='green')
+    # Motor Position
+    axs[2].plot(df["time_s"], df["theta_m_rad"], label="Motor Angle (θ_m)", color='green')
+    axs[2].set_ylabel("θ_m (radians)")
+    axs[2].set_xlabel("Time (s)")
+    axs[2].set_title("Motor Angle Displacement Over Time")
+    axs[2].legend()
+    axs[2].grid()
 
-# Title and Grid
-plt.title('x_pivot, theta_dot, and Acceleration over Time')
-ax1.grid(True)
-
-# Legends
-ax1.legend(loc='upper left')
-ax2.legend(loc='upper right')
-ax3.legend(loc='lower right')
-
-# Show plot
-plt.show()
+    plt.suptitle("Motor Acceleration, Velocity, and Angle")
+    plt.savefig(save_path)
+    plt.show()
 
 
-import pandas as pd
-import matplotlib.pyplot as plt
+def plot_system_state(csv_file, save_path="state_space_analysis.png"):
+    state_df = pd.read_csv(csv_file, header=None, names=["time", "theta", "theta_dot", "x_pivot", "acceleration"])
 
-# Load the data from CSV
-df = pd.read_csv("motor_data.csv")
+    # Debugging: Print min/max values for x_pivot
+    print(f"x_pivot Min: {state_df['x_pivot'].min()}, Max: {state_df['x_pivot'].max()}")
 
-# Create subplots
-fig, axs = plt.subplots(3, 1, figsize=(10, 8))
+    fig, axs = plt.subplots(4, 1, figsize=(10, 8), constrained_layout=True)
 
-# Adjust spacing between subplots
-plt.subplots_adjust(hspace=0.5) 
+    # Pendulum Angle
+    axs[0].plot(state_df["time"], state_df["theta"], label="Angle (θ)", color='blue')
+    axs[0].set_ylabel("θ (radians)")
+    axs[0].set_title("Pendulum Angle Over Time")
+    axs[0].legend()
+    axs[0].grid()
 
-# Acceleration Plot
-axs[0].plot(df["time_s"], df["alpha_m_rad_s2"], label="Motor Acceleration (α_m)", color='blue')
-axs[0].set_ylabel("α_m (rad/s²)")
-axs[0].set_title("Motor Acceleration Over Time")
-axs[0].legend()
-axs[0].grid()
+    # Angular Velocity
+    axs[1].plot(state_df["time"], state_df["theta_dot"], label="Angular Velocity (θ̇)", color='red')
+    axs[1].set_ylabel("θ̇ (rad/s)")
+    axs[1].set_title("Pendulum Angular Velocity Over Time") 
+    axs[1].legend()
+    axs[1].grid()
 
-# Velocity Plot
-axs[1].plot(df["time_s"], df["omega_m_rad_s"], label="Motor Velocity (ω_m)", color='red')
-axs[1].set_ylabel("ω_m (rad/s)")
-axs[1].set_title("Motor Velocity Over Time") 
-axs[1].legend()
-axs[1].grid()
+    # State-Space Trajectory (Theta vs. Theta_dot)
+    axs[2].plot(state_df["theta"], state_df["theta_dot"], label="State-Space Trajectory", color='green')
+    axs[2].set_xlabel("θ (radians)")
+    axs[2].set_ylabel("θ̇ (rad/s)")
+    axs[2].set_title("State-Space Representation (θ vs. θ̇)")
+    axs[2].legend()
+    axs[2].grid()
 
-# Position Plot
-axs[2].plot(df["time_s"], df["theta_m_rad"], label="Motor Angle (θ_m)", color='green')
-axs[2].set_ylabel("θ_m (radians)")
-axs[2].set_xlabel("Time (s)")
-axs[2].set_title("Motor Angle Displacement Over Time")
-axs[2].legend()
-axs[2].grid()
+    # Motor Position
+    axs[3].plot(state_df["time"], state_df["x_pivot"], label="Cart Position (x_pivot)", color='purple')
+    axs[3].set_ylabel("x_pivot (m)")
+    axs[3].set_title("Motor Position Over Time")
+    axs[3].legend()
+    axs[3].grid()
 
-# Overall Title
-plt.suptitle("Motor Acceleration, Velocity, and Angle")
+    plt.savefig(save_path)
+    plt.show()
 
-# Show the plot
-plt.show()
-
-# Load the data from CSV
-state_df = pd.read_csv("recording.csv", header=None, names=["time", "theta", "theta_dot", "x_pivot", "acceleration"])
-
-# Debugging: Print min/max values to check x_pivot
-print("x_pivot Min:", state_df["x_pivot"].min(), "Max:", state_df["x_pivot"].max())
-
-# Create subplots for State-Space Visualization
-fig, axs = plt.subplots(4, 1, figsize=(10, 8), constrained_layout=True)
-
-# Time-domain plot for Angle (theta)
-axs[0].plot(state_df["time"], state_df["theta"], label="Angle (θ)", color='blue')
-axs[0].set_ylabel("θ (radians)")
-axs[0].set_title("Pendulum Angle Over Time")
-axs[0].legend()
-axs[0].grid()
-
-# Time-domain plot for Angular Velocity (theta_dot)
-axs[1].plot(state_df["time"], state_df["theta_dot"], label="Angular Velocity (θ̇)", color='red')
-axs[1].set_ylabel("θ̇ (rad/s)")
-axs[1].set_title("Pendulum Angular Velocity Over Time") 
-axs[1].legend()
-axs[1].grid()
-
-# Phase Portrait: Theta vs Theta_dot
-axs[2].plot(state_df["theta"], state_df["theta_dot"], label="State-Space Trajectory", color='green')
-axs[2].set_xlabel("θ (radians)")
-axs[2].set_ylabel("θ̇ (rad/s)")
-axs[2].set_title("State-Space Representation (θ vs. θ̇)")
-axs[2].legend()
-axs[2].grid()
-
-# Plot x_pivot over time
-axs[3].plot(state_df["time"], state_df["x_pivot"], label="x_pivot", color='purple')
-axs[3].set_ylabel("x_pivot (m)")
-axs[3].set_title("Motor Position Over Time")
-axs[3].legend()
-axs[3].grid()
-
-# Adjust layout and spacing
-plt.tight_layout()
-
-# Save figure
-plt.savefig("state_space_analysis.png")
-plt.show()
+plot_motor_dynamics("motor_data.csv")
+plot_system_state("recording.csv")
