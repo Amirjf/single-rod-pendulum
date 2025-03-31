@@ -1,0 +1,5 @@
+Q (Process Noise): 0.01
+R (Measurement Noise): 0.001
+Mean Squared Error: 663.4466956408245
+Smoothness Metric: 92.32863480091773
+Lag Metric: 0.0
