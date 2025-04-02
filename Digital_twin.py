@@ -80,9 +80,10 @@ class DigitalTwin:
         pygame.init()  # Initialize Pygame
         self.screen = pygame.display.set_mode([1000, 600])  # Create window (1000x600 pixels)
 
-    def connect_device(self, port='COM3', baudrate=115200):  # Establish a serial connection for sensor data
+    def connect_device(self, port='/dev/cu.usbserial-0001', baudrate=115200):  # Establish a serial connection for sensor data
             self.ser = serial.Serial(port=port, baudrate=baudrate, timeout=0, writeTimeout=0)  
             self.device_connected = True  # Mark device as connected
+  
             print("Connected to: " + self.ser.portstr)  # Print confirmation message
 
     def read_data(self):  # Read and process sensor data from the serial connection
