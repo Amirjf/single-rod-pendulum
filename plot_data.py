@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 # Path to the CSV file
-csv_file_path = 'test_data.csv'
+csv_file_path = 'updated_data_data.csv'
 
 # Read the data from the CSV file
 df = pd.read_csv(csv_file_path)
