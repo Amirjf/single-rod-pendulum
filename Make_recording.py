@@ -6,9 +6,6 @@ digital_twin = DigitalTwin()
         
 if __name__=='__main__':
         running = True
-        # You can test a sequence of actions (find the action map in the digitalTwin).
-        # Each action is performed after 200ms so that the actions do not overlap in time.
-        # Can also use your keyboard to manually control the system.
         actions =  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         digital_twin.connect_device()
 
