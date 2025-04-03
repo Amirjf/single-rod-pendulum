@@ -172,7 +172,7 @@ class DigitalTwin:
         # Compute motor acceleration over time
         for t in time_values:
             omega = omega_m[-1]
-            alpha_m = (k * (V_i - k * omega)) / (J * R) - (B_v * omega) / J - T_q / J  # Motor acceleration
+            alpha_m = ((k * (V_i - k * omega)) / (J * R)) - ((B_v * omega) / J) - T_q / J  # Motor acceleration
             
             if t < t1:  
                 # Acceleration phase (Quadratic function for smooth start)
