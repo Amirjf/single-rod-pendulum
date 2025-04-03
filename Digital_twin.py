@@ -24,7 +24,8 @@ class DigitalTwin:
         self.theta_dot = 0.  # Angular velocity (rad/s)
         self.theta_double_dot = 0.  # Angular acceleration (rad/s²)
         self.x_pivot = 0  # Cart position (m)
-        self.delta_t = 0.005  # Time step (s)
+        self.delta_t = 0.005 # Default value# Time step (s)
+        self.k = 0.0174  
         # self.delta_t = 0.0284  # Alternative time step for sensor matching
 
         # Model Parameters
@@ -151,7 +152,7 @@ class DigitalTwin:
         direction = -1 if direction == 'left' else 1
 
         # Motor parameters
-        k = 0.0174        # Motor torque constant (N·m/A)
+        k = self.k      # Motor torque constant (N·m/A)
         J = 8.5075e-6     # Moment of inertia (kg·m²)
         R = 8.18          # Motor resistance (Ω)
         V_i = 12.0        # Input voltage (V)
