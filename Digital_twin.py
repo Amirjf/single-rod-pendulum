@@ -20,7 +20,7 @@ class DigitalTwin:
 
         # Physics State
         self.steps = 0  # Simulation time step counter
-        self.theta = 0  # Pendulum angle (radians)
+        self.theta = 1.5  # Pendulum angle (radians)
         self.theta_dot = 0.  # Angular velocity (rad/s)
         self.theta_double_dot = 0.  # Angular acceleration (rad/s²)
         self.x_pivot = 0  # Cart position (m)
@@ -250,11 +250,13 @@ class DigitalTwin:
         # Torque due to gravity (restoring force)
         torque_gravity = -(self.mp * self.g * self.l / (self.I + self.mp * self.l**2)) * np.sin(theta)
 
-        # Torque due to air friction (proportional to velocity)
+        # # Torque due to air friction (proportional to velocity)
         torque_air_friction = -(self.c_air / (self.I + self.mp * self.l**2)) * theta_dot
 
-        # Torque due to Coulomb friction (constant but direction-dependent)
+        # # Torque due to Coulomb friction (constant but direction-dependent)
         torque_coulomb_friction = -(self.c_c / (self.I + self.mp * self.l**2)) * theta_dot
+
+        # torque_friction = -(self.c_air + self.c_c) * theta_dot  # Combined air and Coulomb friction
 
         # Cart acceleration effect (linear-to-angular translation)
         xdoubledot = self.a_m * self.R_pulley * self.currentmotor_acceleration
@@ -264,6 +266,7 @@ class DigitalTwin:
         
         # Sum all torques to compute the total angular acceleration
         return torque_gravity + torque_air_friction + torque_coulomb_friction + torque_motor
+        # return torque_gravity + torque_friction   # Return total angular acceleration
 
     def step(self):  # Update simulation state at each timestep
         # Update motor state
@@ -413,3 +416,21 @@ class DigitalTwin:
             for y in range(0, 800, 50):  # Horizontal grid lines
                 pygame.draw.line(surface, (200, 200, 200), (0, y), (1000, y))  
             pygame.draw.line(surface, (255, 0, 0), (500, 0), (500, 800), 2)  # Center reference line
+
+    
+    def simulate_passive(self, theta0, theta_dot0, time_array):
+        self.theta = theta0
+        self.theta_dot = theta_dot0
+
+        theta_history = [self.theta]
+
+        for i in range(1, len(time_array)):
+            dt = time_array[i] - time_array[i - 1]
+            theta_ddot = self.get_theta_double_dot(self.theta, self.theta_dot)
+            self.theta_dot += theta_ddot * dt
+            self.theta += self.theta_dot * dt
+            theta_history.append(self.theta)
+            if i % 100 == 0:
+                 print(f"t={time_array[i]:.2f}s | θ={self.theta:.4f}, θ̇={self.theta_dot:.4f}, θ̈={theta_ddot:.4f}")
+
+        return np.array(theta_history)
