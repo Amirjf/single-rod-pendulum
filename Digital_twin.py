@@ -30,12 +30,12 @@ class DigitalTwin:
 
         # Model Parameters
         self.g = 9.8065  # Gravity (m/s²)
-        self.l = 0.3  # Pendulum length (m)
-        self.c_air = 0.005  # Air friction coefficient
-        self.c_c = 0.05  # Coulomb friction coefficient
+        self.l = 0.35  # Pendulum length (m)
+        self.c_air = 0.18  # Air friction coefficient
+        self.c_c = 0.0028  # Coulomb friction coefficient
         self.a_m = 0.5  # Motor force transfer coefficient
         self.mc = 0.0  # Cart mass (kg)
-        self.mp = 1  # Pendulum mass (kg)
+        self.mp = 1.991  # Pendulum mass (kg)
         self.I = 0.00  # Moment of inertia (kg·m²)
         self.R_pulley = 0.05  # Pulley radius (m)
 
@@ -251,12 +251,12 @@ class DigitalTwin:
         torque_gravity = -(self.mp * self.g * self.l / (self.I + self.mp * self.l**2)) * np.sin(theta)
 
         # # Torque due to air friction (proportional to velocity)
-        torque_air_friction = -(self.c_air / (self.I + self.mp * self.l**2)) * theta_dot
+        # torque_air_friction = -(self.c_air / (self.I + self.mp * self.l**2)) * theta_dot
 
         # # Torque due to Coulomb friction (constant but direction-dependent)
-        torque_coulomb_friction = -(self.c_c / (self.I + self.mp * self.l**2)) * theta_dot
+        # torque_coulomb_friction = -(self.c_c / (self.I + self.mp * self.l**2)) * theta_dot
 
-        # torque_friction = -(self.c_air + self.c_c) * theta_dot  # Combined air and Coulomb friction
+        torque_friction = -((self.c_air + self.c_c) / (self.I + self.mp * self.l**2)) * theta_dot  # Combined air and Coulomb friction
 
         # Cart acceleration effect (linear-to-angular translation)
         xdoubledot = self.a_m * self.R_pulley * self.currentmotor_acceleration
@@ -265,8 +265,8 @@ class DigitalTwin:
         torque_motor = -(self.mp * self.l / (self.I + self.mp * self.l**2)) * xdoubledot * np.cos(theta)        
         
         # Sum all torques to compute the total angular acceleration
-        return torque_gravity + torque_air_friction + torque_coulomb_friction + torque_motor
-        # return torque_gravity + torque_friction   # Return total angular acceleration
+        # return torque_gravity + torque_air_friction + torque_coulomb_friction + torque_motor
+        return torque_gravity + torque_friction   # Return total angular acceleration
 
     def step(self):  # Update simulation state at each timestep
         # Update motor state
