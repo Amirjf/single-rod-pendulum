@@ -29,6 +29,9 @@ import sys
 #     movemotor(LOW, HIGH, 50);
 
 
+# movements  = ['d', 'f', 'l', 'k', 'j', 'd', 'd', 'l','f']
+
+
 # Configure your serial connection
 ser = serial.Serial('/dev/cu.usbserial-0001', 115200)
 
@@ -55,7 +58,7 @@ def input_thread():
 
 def log_pendulum_data():
     """Function to log pendulum data to CSV"""
-    with open("move_j.csv", "w", newline="") as file:
+    with open("log_video_a_l_test.csv", "w", newline="") as file:
         writer = csv.writer(file)
         writer.writerow(["xAccl", "yAccl", "zAccl", "newPosition", "time",'pcTime'])
         
@@ -97,6 +100,12 @@ if __name__ == "__main__":
             if command.lower() == 'q':
                 print("Exiting...")
                 break
+            
+            # elif command.lower() == 'b':
+            #     for move in movements:
+            #         move_motor(move)
+            #         time.sleep(0.5)
+            
             move_motor(command)
         except KeyboardInterrupt:
             print("\nProgram terminated by user")

@@ -6,9 +6,14 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import mean_squared_error
 
 # Step 1: Load raw data
-df = pd.read_csv("half_theta_2.csv")  # e.g. half_theta_1.csv
+df = pd.read_csv("move_d_7.4.csv")  # e.g. half_theta_1.csv
+
 df['time_sec'] = df['time'] / 1_000_000  # Convert microseconds to seconds
+
 df = df.sort_values(by='time_sec').reset_index(drop=True)
+
+x_pivot = df['newPosition']
+
 df['dt'] = df['time_sec'].diff().fillna(0)
 
 # Step 2: Compute theta from IMU (in radians)
@@ -20,6 +25,7 @@ df['theta_calib'] = df['theta_raw'] - theta_at_rest
 
 # Step 4: Optional filtering (just for comparison)
 df['theta_med'] = medfilt(df['theta_calib'], kernel_size=15)
+
 df['theta_ema'] = df['theta_calib'].ewm(alpha=0.3, adjust=False).mean()
 
 # Step 5: Kalman Filter (angle + angular velocity)
@@ -37,13 +43,14 @@ filtered_state_means, _ = kf.smooth(df['theta_calib'].values)
 df['theta_kalman'] = filtered_state_means[:, 0]
 df['theta_dot_kalman'] = filtered_state_means[:, 1]
 
-# Step 6: Plot theta and angular velocity
-fig, axs = plt.subplots(2, 1, figsize=(12, 10), sharex=True)
+# Step 6: Plot theta, angular velocity, and x_pivot
+fig, axs = plt.subplots(3, 1, figsize=(12, 15), sharex=True)
 
 # θ angle plot
-axs[0].plot(df['time_sec'], df['theta_calib'], label='Raw θ (calibrated)', color='red', linestyle='dotted', alpha=0.5)
-axs[0].plot(df['time_sec'], df['theta_med'], label='Median Filter', color='green')
-axs[0].plot(df['time_sec'], df['theta_ema'], label='EMA', color='blue')
+# axs[0].plot(df['time_sec'], df['theta_calib'], label='Raw θ (calibrated)', color='red', linestyle='dotted', alpha=0.5)
+# axs[0].plot(df['time_sec'], df['theta_med'], label='Median Filter', color='green')
+# axs[0].plot(df['time_sec'], df['theta_ema'], label='EMA', color='blue')
+
 axs[0].plot(df['time_sec'], df['theta_kalman'], label='Kalman Filter', color='purple')
 axs[0].set_ylabel("Theta (rad)")
 axs[0].set_title("Angle Filtering Comparison")
@@ -52,11 +59,18 @@ axs[0].grid(True)
 
 # θ̇ angular velocity plot
 axs[1].plot(df['time_sec'], df['theta_dot_kalman'], label='θ̇ Kalman', color='orange')
-axs[1].set_xlabel("Time (s)")
 axs[1].set_ylabel("Angular Velocity (rad/s)")
 axs[1].set_title("Kalman Filter Angular Velocity")
 axs[1].legend()
 axs[1].grid(True)
+
+# x_pivot plot
+axs[2].plot(df['time_sec'], x_pivot, label='x_pivot', color='blue')
+axs[2].set_xlabel("Time (s)")
+axs[2].set_ylabel("Position")
+axs[2].set_title("x_pivot (newPosition)")
+axs[2].legend()
+axs[2].grid(True)
 
 plt.tight_layout()
 plt.show()
@@ -71,6 +85,6 @@ print(f"MSE - EMA: {mse_ema:.6f}")
 print(f"MSE - Kalman: {mse_kalman:.6f}")
 
 # Step 8: Save Kalman output to CSV
-df_out = df[['time_sec', 'theta_kalman', 'theta_dot_kalman']]
+df_out = df[['time_sec', 'theta_kalman', 'theta_dot_kalman', 'newPosition']]
 df_out.to_csv("kalman_output.csv", index=False)
 print("✅ Kalman output saved to: kalman_output.csv")
