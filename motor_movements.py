@@ -4,7 +4,6 @@ import serial
 import threading
 import sys
 
-
 #   case 'a':
 #     movemotor(HIGH, LOW, 200);
 #     break;
@@ -56,7 +55,7 @@ def input_thread():
 
 def log_pendulum_data():
     """Function to log pendulum data to CSV"""
-    with open("move_a.csv", "w", newline="") as file:
+    with open("move_j.csv", "w", newline="") as file:
         writer = csv.writer(file)
         writer.writerow(["xAccl", "yAccl", "zAccl", "newPosition", "time",'pcTime'])
         
@@ -88,6 +87,7 @@ def log_pendulum_data():
 if __name__ == "__main__":
     logging_thread = threading.Thread(target=log_pendulum_data, daemon=True)
     logging_thread.start()
+    # move_motor('j')
     
     print("Logging started. Enter motor commands to move the motor.")
     
