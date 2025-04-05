@@ -417,7 +417,7 @@ def simulate_and_plot(params):
     # Add parameter box
     add_parameter_box(fig, params, twin, rms_error, max_error)
     
-    plt.savefig('reports/{csv_filename}_pendulum_GA_analysis.png', dpi=300)
+    plt.savefig(f'reports/{csv_filename}_pendulum_GA_analysis.png', dpi=300)
     plt.show()
     
     # Print detailed results
