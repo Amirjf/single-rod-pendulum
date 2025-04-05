@@ -251,12 +251,10 @@ class DigitalTwin:
         torque_gravity = -(self.mp * self.g * self.l / (self.I + self.mp * self.l**2)) * np.sin(theta)
 
         # # Torque due to air friction (proportional to velocity)
-        # torque_air_friction = -(self.c_air / (self.I + self.mp * self.l**2)) * theta_dot
+        torque_air_friction = -(self.c_air / (self.I + self.mp * self.l**2)) * theta_dot
 
         # # Torque due to Coulomb friction (constant but direction-dependent)
-        # torque_coulomb_friction = -(self.c_c / (self.I + self.mp * self.l**2)) * theta_dot
-
-        torque_friction = -((self.c_air + self.c_c) / (self.I + self.mp * self.l**2)) * theta_dot  # Combined air and Coulomb friction
+        torque_coulomb_friction = -(self.c_c / (self.I + self.mp * self.l**2)) * theta_dot
 
         # Cart acceleration effect (linear-to-angular translation)
         xdoubledot = self.a_m * self.R_pulley * self.currentmotor_acceleration
@@ -265,8 +263,7 @@ class DigitalTwin:
         torque_motor = -(self.mp * self.l / (self.I + self.mp * self.l**2)) * xdoubledot * np.cos(theta)        
         
         # Sum all torques to compute the total angular acceleration
-        # return torque_gravity + torque_air_friction + torque_coulomb_friction + torque_motor
-        return torque_gravity + torque_friction   # Return total angular acceleration
+        return torque_gravity + torque_air_friction + torque_coulomb_friction + torque_motor
 
     def step(self):  # Update simulation state at each timestep
         # Update motor state
