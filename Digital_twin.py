@@ -20,7 +20,7 @@ class DigitalTwin:
 
         # Physics State
         self.steps = 0  # Simulation time step counter
-        self.theta = 1.5  # Pendulum angle (radians)
+        self.theta = 0  # Pendulum angle (radians)
         self.theta_dot = 0.  # Angular velocity (rad/s)
         self.theta_double_dot = 0.  # Angular acceleration (rad/s²)
         self.x_pivot = 0  # Cart position (m)

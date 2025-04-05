@@ -5,7 +5,6 @@ import csv
 import pandas as pd
 import matplotlib.pyplot as plt
 
-# Before starting run: pip install -r requirements.txt
 
 # Clear the contents of the recording.csv file
 with open('recording.csv', mode='w', newline='') as file:

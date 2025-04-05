@@ -9,8 +9,7 @@ ser = serial.Serial('/dev/cu.usbserial-0001', 115200)
 # 74
 # 30
 
-
-with open("test_down_asdasasdsimproved.csv", "w", newline="") as file:
+with open("datasets/other/test_down_asdasasdsimproved.csv", "w", newline="") as file:
     writer = csv.writer(file)
     writer.writerow(["xAccl", "yAccl", "zAccl", "newPosition", "time",'pcTime'])  # Updated header to include time
     
