@@ -37,7 +37,8 @@ class ModifiedDigitalTwin(DigitalTwin):
         return torque_gravity + torque_air_friction + torque_coulomb_friction
 
 # Load real data
-def load_real_data(filename="kalman_output.csv", start_time=1.0):
+csv_filename = "half_theta_2"
+def load_real_data(filename="datasets/filtered_datasets/{csv_filename}_kalman_output.csv", start_time=1.0):
     df = pd.read_csv(filename)
     df_trimmed = df[df['time_sec'] >= start_time].reset_index(drop=True)
     
@@ -412,7 +413,7 @@ def simulate_and_plot(params):
     # Add parameter box
     add_parameter_box(fig, params, twin, rms_error, max_error)
     
-    plt.savefig('reports/pendulum_GA_analysis.png', dpi=300)
+    plt.savefig('reports/{csv_filename}_pendulum_GA_analysis.png', dpi=300)
     plt.show()
     
     # Print detailed results
