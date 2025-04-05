@@ -1,9 +1,4 @@
 .venv
 *.xlsx
-__pycache__/Digital_twin.cpython-312.pyc
 .DS_Store
-.DS_Store
-.DS_Store
-__pycache__/Digital_twin.cpython-313.pyc
-.DS_Store
-.DS_Store
+/__pycache__
