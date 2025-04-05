@@ -20,11 +20,11 @@ class DigitalTwin:
 
         # Physics State
         self.steps = 0  # Simulation time step counter
-        self.theta = 0  # Pendulum angle (radians)
+        self.theta = 1.5   # Pendulum angle (radians)
         self.theta_dot = 0.  # Angular velocity (rad/s)
         self.theta_double_dot = 0.  # Angular acceleration (rad/s²)
         self.x_pivot = 0  # Cart position (m)
-        self.delta_t = 0.005 # Default value# Time step (s)
+        self.delta_t = 0.005  # Time step (s) - optimized for visualization
         self.k = 0.0174  
         # self.delta_t = 0.0284  # Alternative time step for sensor matching
 
@@ -35,7 +35,7 @@ class DigitalTwin:
         self.c_c = 0.0028  # Coulomb friction coefficient
         self.a_m = 0.5  # Motor force transfer coefficient
         self.mc = 0.0  # Cart mass (kg)
-        self.mp = 1.991  # Pendulum mass (kg)
+        self.mp = 1  # Pendulum mass (kg)
         self.I = 0.00  # Moment of inertia (kg·m²)
         self.R_pulley = 0.05  # Pulley radius (m)
 
@@ -194,7 +194,7 @@ class DigitalTwin:
             self.future_motor_velocities, dx=self.delta_t, initial=0))
 
         # Save motor data to CSV file
-        with open("motor_data.csv", mode="w", newline="") as file:
+        with open("reports/motor_data.csv", mode="w", newline="") as file:
             writer = csv.writer(file)
             writer.writerow(["time_s", "alpha_m_rad_s2", "omega_m_rad_s", "theta_m_rad"])
             for i in range(len(time_values) - 2):
@@ -237,7 +237,7 @@ class DigitalTwin:
         self.future_motor_positions = list(cumulative_trapezoid(_velocity,dx=self.delta_t,initial=0))
 
         # Save acceleration, velocity, and position to CSV
-        with open("motor_data.csv", mode="w", newline="") as file:
+        with open("reports/motor_data.csv", mode="w", newline="") as file:
             writer = csv.writer(file)
             writer.writerow(["time_s", "alpha_m_rad_s2", "omega_m_rad_s", "theta_m_rad"])
             for i in range(len(time_values) - 2):
