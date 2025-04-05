@@ -38,7 +38,11 @@ class ModifiedDigitalTwin(DigitalTwin):
 
 # Load real data
 csv_filename = "half_theta_2"
-def load_real_data(filename="datasets/filtered_datasets/{csv_filename}_kalman_output.csv", start_time=1.0):
+
+def load_real_data(filename=None, start_time=1.0):
+    if filename is None:
+        filename = f"datasets/filtered_datasets/{csv_filename}_kalman_output.csv"
+    
     df = pd.read_csv(filename)
     df_trimmed = df[df['time_sec'] >= start_time].reset_index(drop=True)
     
