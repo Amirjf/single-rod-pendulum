@@ -4,10 +4,10 @@ from Digital_twin import DigitalTwin
 import csv
 import pandas as pd
 import matplotlib.pyplot as plt
-
-
+import os
+motor_data_path = "reports/motor_data.csv"
 # Clear the contents of the recording.csv file
-with open('recording.csv', mode='w', newline='') as file:
+with open('reports/recording.csv', mode='w', newline='') as file:
     file.truncate()
 
 digital_twin = DigitalTwin()
@@ -27,7 +27,7 @@ if __name__ == '__main__':
         time.sleep(digital_twin.delta_t)
 
         # Save the theta, theta_dot, x_pivot, and acceleration to CSV
-        with open('recording.csv', mode='a', newline='') as file:
+        with open('reports/recording.csv', mode='a', newline='') as file:
             writer = csv.writer(file)
             writer.writerow([time.time(), theta, theta_dot, x_pivot, currentmotor_acceleration])
 
@@ -50,7 +50,7 @@ if __name__ == '__main__':
     pygame.quit()
 
 
-def plot_motor_dynamics(csv_file, save_path="motor_Acc_vel_angle.png"):
+def plot_motor_dynamics(csv_file, save_path="reports/motor_Acc_vel_angle.png"):
     df = pd.read_csv(csv_file)
 
     fig, axs = plt.subplots(3, 1, figsize=(10, 8), constrained_layout=True)
@@ -82,7 +82,7 @@ def plot_motor_dynamics(csv_file, save_path="motor_Acc_vel_angle.png"):
     plt.show()
 
 
-def plot_system_state(csv_file, save_path="state_space_analysis.png"):
+def plot_system_state(csv_file, save_path="reports/state_space_analysis.png"):
     state_df = pd.read_csv(csv_file, header=None, names=["time", "theta", "theta_dot", "x_pivot", "acceleration"])
 
     # Debugging: Print min/max values for x_pivot
@@ -122,5 +122,9 @@ def plot_system_state(csv_file, save_path="state_space_analysis.png"):
     plt.savefig(save_path)
     plt.show()
 
-plot_motor_dynamics("motor_data.csv")
-plot_system_state("recording.csv")
+if os.path.exists(motor_data_path):
+    plot_motor_dynamics(motor_data_path)
+else:
+    print(f"⚠️ Motor data not found at: {motor_data_path}")
+
+plot_system_state("reports/recording.csv")
