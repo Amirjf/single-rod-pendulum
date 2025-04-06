@@ -20,24 +20,26 @@ class DigitalTwin:
 
         # Physics State
         self.steps = 0  # Simulation time step counter
-        self.theta = 1.5   # Pendulum angle (radians)
+        self.theta = 1.5  # Pendulum angle (radians) - starting from vertical position
         self.theta_dot = 0.  # Angular velocity (rad/s)
         self.theta_double_dot = 0.  # Angular acceleration (rad/s²)
         self.x_pivot = 0  # Cart position (m)
-        self.delta_t = 0.005  # Time step (s) - optimized for visualization
+        self.delta_t = 0.025  # Time step (s) - optimized for visualization
         self.k = 0.0174  
         # self.delta_t = 0.0284  # Alternative time step for sensor matching
 
         # Model Parameters
         self.g = 9.8065  # Gravity (m/s²)
         self.l = 0.35  # Pendulum length (m)
-        self.c_air = 0.18  # Air friction coefficient
-        self.c_c = 0.0028  # Coulomb friction coefficient
+        self.c_air = 0.001  # Air friction coefficient
+        self.c_c = 0.01962055  # Coulomb friction coefficient
         self.a_m = 0.5  # Motor force transfer coefficient
         self.mc = 0.0  # Cart mass (kg)
-        self.mp = 1  # Pendulum mass (kg)
-        self.I = 0.00  # Moment of inertia (kg·m²)
+        self.mp = 1.0694  # Pendulum mass (kg)
+        self.I_scale = 0.7209  # Default moment of inertia scale
+        self.I = self.I_scale * self.mp * self.l**2  # instead of 0.00  # Moment of inertia (kg·m²)
         self.R_pulley = 0.05  # Pulley radius (m)
+        self.c_angle = 1  # new parameter
 
         # Motor State
         self.future_motor_accelerations = []
@@ -247,6 +249,15 @@ class DigitalTwin:
         
     def get_theta_double_dot(self, theta, theta_dot):
 
+        torque_gravity = -(self.g / (self.I_scale  * self.l)) * np.sin(theta)
+        
+        # Damping term - mass naturally cancels out
+        torque_damping = -(self.c_c /  self.I) * theta_dot
+        
+        return torque_gravity + torque_damping
+    
+    def get_theta_double_dot_sim(self, theta, theta_dot):
+
         # Torque due to gravity (restoring force)
         torque_gravity = -(self.mp * self.g * self.l / (self.I + self.mp * self.l**2)) * np.sin(theta)
 
@@ -264,23 +275,30 @@ class DigitalTwin:
         
         # Sum all torques to compute the total angular acceleration
         return torque_gravity + torque_air_friction + torque_coulomb_friction + torque_motor
-
-    def step(self):  # Update simulation state at each timestep
+    
+    def step(self):
         # Update motor state
-        self.check_prediction_lists()  # Ensure prediction lists are not empty
-        self.currentmotor_acceleration = self.future_motor_accelerations.pop(0)  # Get next motor acceleration
-        self.currentmotor_velocity = self.future_motor_velocities.pop(0)  # Get next motor velocity
-        self.x_pivot += self.R_pulley * self.future_motor_positions.pop(0)  # Update cart position
+        self.check_prediction_lists()
+        self.currentmotor_acceleration = self.future_motor_accelerations.pop(0)
+        self.currentmotor_velocity = self.future_motor_velocities.pop(0)
+        self.x_pivot += self.R_pulley * self.future_motor_positions.pop(0)
 
-        # Update pendulum state
-        self.theta_double_dot = self.get_theta_double_dot(self.theta, self.theta_dot)  # Compute angular acceleration
-        self.theta += self.theta_dot * self.delta_t  # Update angle using angular velocity
-        self.theta_dot += self.theta_double_dot * self.delta_t  # Update angular velocity
-        self.time += self.delta_t  # Increment simulation time
-        self.steps += 1  # Increment step counter
+        # Update pendulum state - corrected integration order
+        self.theta_double_dot = self.get_theta_double_dot(self.theta, self.theta_dot)
         
-        return self.theta, self.theta_dot, self.x_pivot, self.currentmotor_acceleration  # Return updated state
+        # Apply smooth enhanced friction near zero velocity
+        static_threshold = 0.5  # Velocity threshold for enhanced friction
+        enhancement = 5.0 * (1.0 - np.tanh(abs(self.theta_dot) / static_threshold)**2)
+        self.theta_double_dot -= enhancement * (self.c_c / (self.mp * self.I)) * self.theta_dot
         
+        self.theta_dot += self.theta_double_dot * self.delta_t  # First update velocity
+        self.theta += self.theta_dot * self.delta_t  # Then use new velocity to update position
+        
+        self.time += self.delta_t
+        self.steps += 1
+        
+        return self.theta, self.theta_dot, self.x_pivot, self.currentmotor_acceleration
+
     def draw_line_and_circles(self, colour, start_pos, end_pos, line_width=5, circle_radius=9):  # Draw pendulum arm and joint
         pygame.draw.line(self.screen, colour, start_pos, end_pos, line_width)  # Draw pendulum rod
         
@@ -416,18 +434,26 @@ class DigitalTwin:
 
     
     def simulate_passive(self, theta0, theta_dot0, time_array):
+        """Simulate passive pendulum motion with enhanced static friction"""
         self.theta = theta0
         self.theta_dot = theta_dot0
-
         theta_history = [self.theta]
-
+        
+        static_threshold = 0.5  # Velocity threshold for enhanced friction
+        
         for i in range(1, len(time_array)):
             dt = time_array[i] - time_array[i - 1]
+            
+            # Calculate acceleration
             theta_ddot = self.get_theta_double_dot(self.theta, self.theta_dot)
+            
+            # Apply smooth enhanced friction near zero velocity
+            enhancement = 5.0 * (1.0 - np.tanh(abs(self.theta_dot) / static_threshold)**2)
+            theta_ddot -= enhancement * (self.c_c / (self.mp * self.I)) * self.theta_dot
+            
+            # Update state
             self.theta_dot += theta_ddot * dt
             self.theta += self.theta_dot * dt
             theta_history.append(self.theta)
-            if i % 100 == 0:
-                 print(f"t={time_array[i]:.2f}s | θ={self.theta:.4f}, θ̇={self.theta_dot:.4f}, θ̈={theta_ddot:.4f}")
-
+        
         return np.array(theta_history)
