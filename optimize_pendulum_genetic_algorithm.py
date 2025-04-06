@@ -144,7 +144,7 @@ def optimize_pendulum_params():
     plt.title('Evolution of Fitness Over Generations')
     plt.legend()
     plt.grid(True)
-    plt.savefig('ga_evolution.png')
+    plt.savefig('reports/ga_evolution.png')
     plt.close()
     
     return result
@@ -189,7 +189,7 @@ class ModifiedDigitalTwin(DigitalTwin):
             theta_ddot = self.get_theta_double_dot(self.theta, self.theta_dot)
             
             # Apply smooth enhanced friction near zero velocity
-            enhancement = 5.0 * (1.0 - np.tanh(abs(self.theta_dot) / static_threshold)**2)
+            enhancement = 8.0 * (1.0 - np.tanh(abs(self.theta_dot) / static_threshold)**2)
             theta_ddot -= enhancement * (self.damping_coefficient / (self.mp * self.I)) * self.theta_dot
             
             # Update state
