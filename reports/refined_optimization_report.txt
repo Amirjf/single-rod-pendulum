@@ -1,0 +1,57 @@
+PENDULUM OPTIMIZATION REPORT (REFINED GRID SEARCH + MULTI-METHOD LOCAL OPTIMIZATION)
+================================================================================
+Date: 2025-04-06 16:18:39
+
+OPTIMIZATION PARAMETERS
+--------------------------------------------------
+Grid Search Parameters:
+I_scale range: 0.6200 to 0.8200 (15 points)
+Damping range: 0.000800 to 0.001200 (15 points)
+Mass range: 0.0940 to 0.1140 (15 points)
+
+Local Optimization Parameters:
+Methods: Nelder-Mead, Powell, BFGS
+Maximum Iterations: 2000
+Tolerance: 1e-08
+
+PHYSICAL PARAMETERS
+--------------------------------------------------
+Mass (mp): 0.084600 kg
+Length (l): 0.350000 m
+Moment of Inertia Scale: 0.902000
+Effective I: 0.00934788 kg⋅m²
+Damping Coefficient: 0.00081778
+
+DYNAMIC CHARACTERISTICS
+--------------------------------------------------
+Natural Frequency: 0.8424 Hz
+Damping Ratio: 0.000799
+Quality Factor: 625.81
+Time Constant: 236.4565 s
+
+PERFORMANCE METRICS
+--------------------------------------------------
+RMS Error: 0.428055 rad
+Max Absolute Error: 1.117671 rad
+Mean Error: -0.003122 rad
+Error Std Dev: 0.428044 rad
+Error Skewness: -0.080084
+Error Kurtosis: 0.248958
+
+COST FUNCTION BREAKDOWN
+--------------------------------------------------
+Time Domain Error: 4.9353
+Frequency Error: 53.7940
+Amplitude Error: 108.0916
+Decay Error: 36.7412
+Energy Error: 0.3751
+Phase Space Error: 1545.4037
+Total Cost: 1749.340922
+
+OPTIMIZATION SUMMARY
+--------------------------------------------------
+Success: True
+Number of evaluations: 15
+Number of iterations: 9
+Final cost value: 1749.340922
+Optimization message: Refined Grid Search + Multi-Method Local Optimization (Nelder-Mead)

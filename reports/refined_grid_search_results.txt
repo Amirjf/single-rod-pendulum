@@ -1,0 +1,17 @@
+Refined Grid Search Results
+==================================================
+
+Total points evaluated: 3375
+Best parameters found:
+I_scale: 0.820000
+Damping: 0.00080000
+Mass: 0.094000
+Best cost: 1961.365842
+
+Top 5 parameter combinations:
+--------------------------------------------------
+1. I_scale=0.820000, Damping=0.00080000, Mass=0.094000, Cost=1961.365842
+2. I_scale=0.820000, Damping=0.00082857, Mass=0.094000, Cost=1961.365842
+3. I_scale=0.820000, Damping=0.00085714, Mass=0.094000, Cost=1961.365842
+4. I_scale=0.820000, Damping=0.00088571, Mass=0.094000, Cost=1961.365842
+5. I_scale=0.820000, Damping=0.00091429, Mass=0.094000, Cost=1961.365842

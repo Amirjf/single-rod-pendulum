@@ -1,0 +1,78 @@
+PENDULUM OPTIMIZATION REPORT (GRID SEARCH + LOCAL OPTIMIZATION)
+==================================================
+Date: 2025-04-06 17:45:41
+
+OPTIMIZATION PARAMETERS
+--------------------------------------------------
+Grid Search Parameters:
+I_scale range: 0.6000 to 0.9000 (15 points)
+Damping range: 0.001000 to 0.040000 (15 points)
+Mass range: 0.5000 to 1.5000 (15 points)
+
+Local Optimization Parameters:
+Method: Nelder-Mead
+Maximum Iterations: 1000
+Tolerance: 1e-06
+
+PHYSICAL PARAMETERS
+--------------------------------------------------
+Mass (mp): 0.5786 kg
+Length (l): 0.3500 m
+Moment of Inertia Scale: 0.7140
+Effective I: 0.050602 kg⋅m²
+Damping Coefficient: 0.00878749
+
+DYNAMIC CHARACTERISTICS
+--------------------------------------------------
+Natural Frequency: 0.8426 Hz
+Measured Frequency: 1.0302 Hz
+Frequency Error: 22.26%
+Damping Ratio: 0.0037
+Quality Factor: 135.53
+Time Constant: 51.1977 s
+
+PERFORMANCE METRICS
+--------------------------------------------------
+RMS Error: 0.0437 rad
+Max Absolute Error: 0.1671 rad
+Mean Error: -0.0089 rad
+Error Std Dev: 0.0428 rad
+Error Skewness: -0.1726
+Error Kurtosis: 0.3640
+
+COST FUNCTION BREAKDOWN
+--------------------------------------------------
+Time Domain Error: 0.0651
+Frequency Error: 1.0149
+Amplitude Error: 0.0879
+Decay Error: 0.5445
+Energy Error: 0.0207
+Total Cost: 1.7331
+
+OPTIMIZATION SUMMARY
+--------------------------------------------------
+Success: True
+Number of evaluations: 268
+Number of iterations: 147
+Final cost value: 1.733081
+Optimization message: Grid Search + Local Optimization (Nelder-Mead)
+
+SENSITIVITY ANALYSIS
+--------------------------------------------------
+I_scale variations:
+I_scale=0.5712 (change: -20%) → Cost=213.817887
+I_scale=0.6426 (change: -10%) → Cost=98.697024
+I_scale=0.7854 (change: +10%) → Cost=89.018185
+I_scale=0.8568 (change: +20%) → Cost=152.425531
+
+Mass variations:
+mass=0.4629 (change: -20%) → Cost=13.337227
+mass=0.5207 (change: -10%) → Cost=5.066769
+mass=0.6364 (change: +10%) → Cost=4.826016
+mass=0.6943 (change: +20%) → Cost=8.865232
+
+Damping coefficient variations:
+damping=0.00703000 (change: -20%) → Cost=10.754039
+damping=0.00790875 (change: -10%) → Cost=4.961577
+damping=0.00966624 (change: +10%) → Cost=4.047102
+damping=0.01054499 (change: +20%) → Cost=7.741573

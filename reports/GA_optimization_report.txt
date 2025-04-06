@@ -1,0 +1,75 @@
+PENDULUM OPTIMIZATION REPORT (GENETIC ALGORITHM)
+==================================================
+Date: 2025-04-06 17:44:57
+
+GENETIC ALGORITHM PARAMETERS
+--------------------------------------------------
+Population Size: 100
+Number of Generations: 50
+Crossover Probability: 0.7
+Mutation Probability: 0.2
+Tournament Size: 3
+Hall of Fame Size: 5
+
+PHYSICAL PARAMETERS
+--------------------------------------------------
+Mass (mp): 1.8867 kg
+Length (l): 0.3500 m
+Moment of Inertia Scale: 0.7231
+Effective I: 0.167129 kg⋅m²
+Damping Coefficient: 0.03424968
+
+DYNAMIC CHARACTERISTICS
+--------------------------------------------------
+Natural Frequency: 0.8426 Hz
+Measured Frequency: 1.0302 Hz
+Frequency Error: 22.26%
+Damping Ratio: 0.0079
+Quality Factor: 63.19
+Time Constant: 23.8726 s
+
+PERFORMANCE METRICS
+--------------------------------------------------
+RMS Error: 0.0664 rad
+Max Absolute Error: 0.1527 rad
+Mean Error: -0.0088 rad
+Error Std Dev: 0.0658 rad
+Error Skewness: 0.0092
+Error Kurtosis: -0.7869
+
+COST FUNCTION BREAKDOWN
+--------------------------------------------------
+Time Domain Error: 0.1390
+Frequency Error: 2.4121
+Amplitude Error: 0.4122
+Decay Error: 1.0028
+Energy Error: 0.0114
+Total Cost: 3.9661
+
+OPTIMIZATION SUMMARY
+--------------------------------------------------
+Success: True
+Number of evaluations: 5000
+Number of generations: 50
+Final cost value: 3.966148
+Optimization message: Genetic Algorithm optimization terminated successfully.
+
+SENSITIVITY ANALYSIS
+--------------------------------------------------
+I_scale variations:
+I_scale=0.5785 (change: -20%) → Cost=212.008584
+I_scale=0.6508 (change: -10%) → Cost=94.935225
+I_scale=0.7955 (change: +10%) → Cost=98.537541
+I_scale=0.8678 (change: +20%) → Cost=156.455732
+
+Mass variations:
+mass=1.5093 (change: -20%) → Cost=11.024791
+mass=1.6980 (change: -10%) → Cost=6.279631
+mass=2.0753 (change: +10%) → Cost=5.393666
+mass=2.2640 (change: +20%) → Cost=8.288341
+
+Damping coefficient variations:
+damping=0.02739975 (change: -20%) → Cost=9.724561
+damping=0.03082471 (change: -10%) → Cost=5.454856
+damping=0.03767465 (change: +10%) → Cost=5.796196
+damping=0.04109962 (change: +20%) → Cost=8.203340

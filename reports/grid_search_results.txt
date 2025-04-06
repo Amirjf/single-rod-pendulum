@@ -1,0 +1,22 @@
+Grid Search Results
+==================================================
+
+Total points evaluated: 3375
+Best parameters found:
+I_scale: 0.707143
+Damping: 0.00935714
+Mass: 0.642857
+Best cost: 3.471387
+
+Top 10 parameter combinations:
+--------------------------------------------------
+1. I_scale=0.707143, Damping=0.00935714, Mass=0.642857, Cost=3.471387
+2. I_scale=0.707143, Damping=0.01214286, Mass=0.785714, Cost=4.191387
+3. I_scale=0.707143, Damping=0.01214286, Mass=0.857143, Cost=4.336856
+4. I_scale=0.707143, Damping=0.00657143, Mass=0.500000, Cost=4.521321
+5. I_scale=0.707143, Damping=0.01492857, Mass=1.000000, Cost=4.560052
+6. I_scale=0.707143, Damping=0.01492857, Mass=1.071429, Cost=4.805031
+7. I_scale=0.707143, Damping=0.01771429, Mass=1.214286, Cost=4.838730
+8. I_scale=0.707143, Damping=0.00935714, Mass=0.714286, Cost=4.967061
+9. I_scale=0.707143, Damping=0.02050000, Mass=1.428571, Cost=5.025008
+10. I_scale=0.707143, Damping=0.01771429, Mass=1.285714, Cost=5.097868

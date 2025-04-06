@@ -1,0 +1,74 @@
+PENDULUM OPTIMIZATION REPORT (DIFFERENTIAL EVOLUTION)
+==================================================
+Date: 2025-04-06 17:41:08
+
+DIFFERENTIAL EVOLUTION PARAMETERS
+--------------------------------------------------
+Population Size: 40
+Maximum Iterations: 300
+Mutation Strategy: best1bin
+Recombination Rate: 0.7
+Mutation Rate: (0.5, 1.0)
+
+PHYSICAL PARAMETERS
+--------------------------------------------------
+Mass (mp): 0.3971 kg
+Length (l): 0.3500 m
+Moment of Inertia Scale: 0.7110
+Effective I: 0.034587 kg⋅m²
+Damping Coefficient: 0.00562279
+
+DYNAMIC CHARACTERISTICS
+--------------------------------------------------
+Natural Frequency: 0.8426 Hz
+Measured Frequency: 1.0302 Hz
+Frequency Error: 22.26%
+Damping Ratio: 0.0029
+Quality Factor: 175.11
+Time Constant: 66.1508 s
+
+PERFORMANCE METRICS
+--------------------------------------------------
+RMS Error: 0.0545 rad
+Max Absolute Error: 0.1719 rad
+Mean Error: -0.0089 rad
+Error Std Dev: 0.0538 rad
+Error Skewness: -0.0361
+Error Kurtosis: -0.2631
+
+COST FUNCTION BREAKDOWN
+--------------------------------------------------
+Time Domain Error: 0.1037
+Frequency Error: 0.8446
+Amplitude Error: 0.1764
+Decay Error: 0.3692
+Energy Error: 0.0254
+Total Cost: 1.4938
+
+OPTIMIZATION SUMMARY
+--------------------------------------------------
+Success: True
+Number of evaluations: 15324
+Number of iterations: 126
+Final cost value: 1.493839
+Optimization message: Optimization terminated successfully.
+
+SENSITIVITY ANALYSIS
+--------------------------------------------------
+I_scale variations:
+I_scale=0.5688 (change: -20%) → Cost=215.541165
+I_scale=0.6399 (change: -10%) → Cost=99.792738
+I_scale=0.7820 (change: +10%) → Cost=86.578603
+I_scale=0.8531 (change: +20%) → Cost=151.703920
+
+Mass variations:
+mass=0.3177 (change: -20%) → Cost=17.480037
+mass=0.3574 (change: -10%) → Cost=6.350439
+mass=0.4368 (change: +10%) → Cost=5.362593
+mass=0.4766 (change: +20%) → Cost=10.032840
+
+Damping coefficient variations:
+damping=0.00449823 (change: -20%) → Cost=12.130794
+damping=0.00506051 (change: -10%) → Cost=5.515501
+damping=0.00618507 (change: +10%) → Cost=4.660101
+damping=0.00674735 (change: +20%) → Cost=9.300300
