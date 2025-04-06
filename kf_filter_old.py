@@ -73,5 +73,5 @@ print(f"MSE - Kalman: {mse_kalman:.6f}")
 
 # Step 8: Save Kalman output to CSV
 df_out = df[['time_sec', 'theta_kalman', 'theta_dot_kalman']]
-df_out.to_csv("kalman_output.csv", index=False)
+df_out.to_csv("kalman_output_test.csv", index=False)
 print("✅ Kalman output saved to: kalman_output.csv")
