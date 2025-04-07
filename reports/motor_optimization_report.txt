@@ -1,6 +1,6 @@
 MOTOR PARAMETER OPTIMIZATION REPORT
 ==================================================
-Date: 2025-04-07 03:20:06
+Date: 2025-04-07 15:59:23
 
 OPTIMIZATION PARAMETERS
 --------------------------------------------------
@@ -12,7 +12,7 @@ Recombination Rate: 0.7
 
 OPTIMIZATION RESULTS
 --------------------------------------------------
-Motor Force Transfer Coefficient (a_m): 0.0500
-Key Press Duration: 309.8 ms
-Final Error: 17.480415
-Time Domain Error: 0.070092
+Motor Force Transfer Coefficient (a_m): 0.1000
+Key Press Duration: 300.8 ms
+Final Error: 18.712473
+Time Domain Error: 0.088117
