@@ -157,19 +157,12 @@ def parallel_cost_function(params, time_array, theta_real, theta_dot_real, theta
     sim_decay = sim_amplitudes[1:] / sim_amplitudes[:-1]
     decay_error = np.mean((real_decay - sim_decay)**2)
     
-    # Energy conservation error
-    l = twin.l
-    g = twin.g
-    E_real = 0.5 * l**2 * theta_dot_real[:min_len]**2 + g * l * (1 - np.cos(theta_real[:min_len]))
-    E_sim = 0.5 * l**2 * theta_dot_sim**2 + g * l * (1 - np.cos(theta_sim[:min_len]))
-    energy_error = np.mean((E_sim - E_real)/np.max(E_real))**2
     
     # Total cost with weights
     total_cost = (50 * time_domain_error + 
                  600 * freq_error + 
                  200 * amplitude_error + 
-                 200 * decay_error + 
-                 energy_error)
+                 200 * decay_error)
     
     return total_cost
 
