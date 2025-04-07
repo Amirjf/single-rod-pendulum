@@ -39,9 +39,9 @@ Here are sample recordings of the data collection sessions:
 
 Logs accelerometer + encoder data as the cart moves in short bursts.
 
-[🎥 Single Pendulum Movements Video 1](https://hanzenl-my.sharepoint.com/:v:/r/personal/a_jafari_st_hanze_nl/Documents/pendulum_data_gathering/half.mp4?csf=1&web=1&nav=eyJyZWZlcnJhbEluZm8iOnsicmVmZXJyYWxBcHAiOiJPbmVEcml2ZUZvckJ1c2luZXNzIiwicmVmZXJyYWxBcHBQbGF0Zm9ybSI6IldlYiIsInJlZmVycmFsTW9kZSI6InZpZXciLCJyZWZlcnJhbFZpZXciOiJNeUZpbGVzTGlua0NvcHkifX0&e=sa3FTN)
+[🎥 Single Pendulum Movements Video 1](https://drive.google.com/file/d/1uwXgxUEdPyjAtTXvZwFLFt8k1ZoeykUe/view?usp=sharing)
 
-[🎥 Single Pendulum Movements Video 2](https://hanzenl-my.sharepoint.com/:v:/r/personal/a_jafari_st_hanze_nl/Documents/pendulum_data_gathering/half.mp4?csf=1&web=1&nav=eyJyZWZlcnJhbEluZm8iOnsicmVmZXJyYWxBcHAiOiJPbmVEcml2ZUZvckJ1c2luZXNzIiwicmVmZXJyYWxBcHBQbGF0Zm9ybSI6IldlYiIsInJlZmVycmFsTW9kZSI6InZpZXciLCJyZWZlcnJhbFZpZXciOiJNeUZpbGVzTGlua0NvcHkifX0&e=sa3FTN)
+[🎥 Single Pendulum Movements Video 2](https://drive.google.com/file/d/1cl6_7ZlVZOXNdCStdQezF6OfOyYDlMJa/view?usp=sharing)
 
 ---
 
@@ -55,7 +55,7 @@ Captures full-range theta swings — both minimum and maximum angles.
 
 Focuses on the pendulum's motion while the cart is stationary.
 
-[🎥 Single Pendulum Movements Video](https://hanzenl-my.sharepoint.com/:v:/r/personal/a_jafari_st_hanze_nl/Documents/pendulum_data_gathering/pendulum_with_cart_movement.mp4?csf=1&web=1&nav=eyJyZWZlcnJhbEluZm8iOnsicmVmZXJyYWxBcHAiOiJPbmVEcml2ZUZvckJ1c2luZXNzIiwicmVmZXJyYWxBcHBQbGF0Zm9ybSI6IldlYiIsInJlZmVycmFsTW9kZSI6InZpZXciLCJyZWZlcnJhbFZpZXciOiJNeUZpbGVzTGlua0NvcHkifX0&e=z9IKFJ)
+[🎥 Single Pendulum Movements Video](https://drive.google.com/file/d/18_DJQiT9Qgbnzhusx09J4R-xPQCMkzNB/view?usp=sharing)
 
 ## 🛠️ Built With
 
