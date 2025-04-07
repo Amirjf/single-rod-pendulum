@@ -8,6 +8,7 @@ from scipy.integrate import cumulative_trapezoid
 import time
 import pandas as pd
 import csv
+from datetime import datetime
 
 class DigitalTwin:
     def __init__(self):
@@ -20,7 +21,7 @@ class DigitalTwin:
 
         # Physics State
         self.steps = 0  # Simulation time step counter
-        self.theta = 1.5  # Pendulum angle (radians) - starting from vertical position
+        self.theta = 0  # Pendulum angle (radians) - starting from vertical position
         self.theta_dot = 0.  # Angular velocity (rad/s)
         self.theta_double_dot = 0.  # Angular acceleration (rad/s²)
         self.x_pivot = 0  # Cart position (m)
@@ -32,13 +33,13 @@ class DigitalTwin:
         self.g = 9.8065  # Gravity (m/s²)
         self.l = 0.35  # Pendulum length (m)
         self.c_air = 0.001  # Air friction coefficient
-        self.c_c = 0.01962055  # Coulomb friction coefficient
-        self.a_m = 0.5  # Motor force transfer coefficient
+        self.c_c = 0.001  # Coulomb friction coefficient (reduced from 0.00562279)
+        self.a_m = 0.14 # Motor force transfer coefficient
         self.mc = 0.0  # Cart mass (kg)
-        self.mp = 1.0694  # Pendulum mass (kg)
-        self.I_scale = 0.7209  # Default moment of inertia scale
+        self.mp = 0.3971  # Pendulum mass (kg)
+        self.I_scale = 0.7110  # Default moment of inertia scale
         self.I = self.I_scale * self.mp * self.l**2  # instead of 0.00  # Moment of inertia (kg·m²)
-        self.R_pulley = 0.05  # Pulley radius (m)
+        self.R_pulley = 0.009  # Pulley radius (m)
         self.c_angle = 1  # new parameter
 
         # Motor State
@@ -56,7 +57,7 @@ class DigitalTwin:
         self.click_counter = 0  # User input counter
 
         # Action Configuration (User Input)
-        action_durations = [200, 150, 100, 50]  # Action durations (ms)
+        action_durations = [400, 350, 300, 200]  # Action durations (ms)
         keys_left = [pygame.K_a, pygame.K_s, pygame.K_d, pygame.K_f]  # Left movement keys
         keys_right = [pygame.K_SEMICOLON, pygame.K_l, pygame.K_k, pygame.K_j]  # Right movement keys
 
@@ -66,8 +67,15 @@ class DigitalTwin:
 
         # Define possible actions with different durations
         self.action_map = [
-            ('left', 0), ('left', 50), ('left', 100), ('left', 150), ('left', 200),
-            ('right', 50), ('right', 100), ('right', 150), ('right', 200)
+            ('left', 0),      # 0: No movement
+            ('left', 400),    # 1: Long left
+            ('left', 450),    # 2: Longer left
+            ('left', 500),    # 3: Very long left
+            ('left', 550),    # 4: Extra long left
+            ('right', 400),   # 5: Long right
+            ('right', 450),   # 6: Longer right
+            ('right', 500),   # 7: Very long right
+            ('right', 550)    # 8: Extra long right
         ]
 
         # Data Recording
@@ -155,11 +163,11 @@ class DigitalTwin:
 
         # Motor parameters
         k = self.k      # Motor torque constant (N·m/A)
-        J = 8.5075e-6     # Moment of inertia (kg·m²)
-        R = 8.18          # Motor resistance (Ω)
+        J = 8.0075e-6     # Moment of inertia (kg·m²)
+        R = 3          # Motor resistance (Ω) - reduced from 3.0
         V_i = 12.0        # Input voltage (V)
-        B_v = 1.5e-8      # Viscous damping coefficient (kg·m²/s)
-        T_q = 0.0         # Load torque (assumed zero for simplification)
+        B_v = 8e-9      # Viscous damping coefficient (kg·m²/s) - reduced from 1.1e-8
+        T_q = 0.0
 
         # Motion timing (Three-phase movement)
         t1 = duration / 4  # Acceleration phase
@@ -253,8 +261,12 @@ class DigitalTwin:
         
         # Damping term - mass naturally cancels out
         torque_damping = -(self.c_c /  self.I) * theta_dot
+
+        xdoubledot = self.a_m * self.R_pulley * self.currentmotor_acceleration
+
+        torque_motor = - (1/ (self.I_scale * self.l)) * xdoubledot * np.cos(theta)
         
-        return torque_gravity + torque_damping
+        return torque_gravity + torque_damping + torque_motor
     
     def get_theta_double_dot_sim(self, theta, theta_dot):
 
