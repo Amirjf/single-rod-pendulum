@@ -5,50 +5,134 @@ import csv
 import pandas as pd
 import matplotlib.pyplot as plt
 import os
+import math
+import numpy as np
+
 motor_data_path = "reports/motor_data.csv"
-# Clear the contents of the recording.csv file
-with open('reports/recording.csv', mode='w', newline='') as file:
-    file.truncate()
 
-digital_twin = DigitalTwin()
+def simulate_pendulum(automated=False, best_sequence=None):
+    """
+    Simulate the pendulum with either automated or manual control.
+    
+    Args:
+        automated (bool): If True, runs in automated mode using best_sequence
+        best_sequence (list): List of (time, action) tuples for automated mode
+    """
+    # Clear the contents of the recording.csv file
+    with open('reports/recording.csv', mode='w', newline='') as file:
+        file.truncate()
 
-if __name__ == '__main__':
+    digital_twin = DigitalTwin()
     running = True
     last_action = "None"  # Track the last action performed
+    start_time = time.time()
 
     while running:
+        current_time = time.time() - start_time
+        
         # Step through simulation
         theta, theta_dot, x_pivot, currentmotor_acceleration = digital_twin.step()
 
-        # Render with updated information (pass last_action)
-        digital_twin.render(theta, x_pivot, last_action) # Update to include action tracking
+        # Render with updated information
+        digital_twin.render(theta, x_pivot, last_action)
 
         # Sleep for time step
         time.sleep(digital_twin.delta_t)
 
-        # Save the theta, theta_dot, x_pivot, and acceleration to CSV
+        # Save the data to CSV
         with open('reports/recording.csv', mode='a', newline='') as file:
             writer = csv.writer(file)
-            writer.writerow([time.time(), theta, theta_dot, x_pivot, currentmotor_acceleration])
+            writer.writerow([current_time, theta, theta_dot, x_pivot, currentmotor_acceleration])
 
         # Handle Pygame events
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
             elif event.type == pygame.KEYDOWN:
-                if event.key in digital_twin.actions:
-                    direction, duration = digital_twin.actions[event.key]
+                if automated:
+                    # In automated mode, only handle quit and escape
+                    if event.key == pygame.K_ESCAPE:
+                        running = False
+                else:
+                    # Manual control mode
+                    if event.key in digital_twin.actions:
+                        direction, duration = digital_twin.actions[event.key]
+                        digital_twin.perform_action(direction, duration)
+                        last_action = f"{direction.capitalize()} ({duration} ms)"
+                    elif event.key == pygame.K_r:
+                        digital_twin = DigitalTwin()  # Restart the system
+                        last_action = "System Restarted"
+                        print("System restarted")
+                    elif event.key == pygame.K_b:  # 'b' for best sequence
+                        print("Executing best sequence...")
+                        if not execute_best_sequence(digital_twin):
+                            running = False
+                    elif event.key == pygame.K_ESCAPE:
+                        running = False
+
+        # In automated mode, check if it's time for the next action
+        if automated and best_sequence:
+            for target_time, action in best_sequence:
+                if abs(current_time - target_time) < digital_twin.delta_t:
+                    direction, duration = action
                     digital_twin.perform_action(direction, duration)
-                    last_action = f"{direction.capitalize()} ({duration} ms)"  # Track last action
-                elif event.key == pygame.K_r:
-                    digital_twin = DigitalTwin()  # Restart the system
-                    last_action = "System Restarted"
-                    print("System restarted")
-                elif event.key == pygame.K_ESCAPE:
-                    running = False  # Quit the simulation
+                    last_action = f"{direction.capitalize()} ({duration} ms)"
+                    print(f"Automated action: {direction} ({duration}ms) at {current_time:.2f}s")
 
     pygame.quit()
 
+def execute_best_sequence(digital_twin):
+    """Execute the best action sequence found by the genetic algorithm."""
+    # Best sequence timing and actions using ASCII key values
+    sequence = [
+        (0.0, ('left', 450)),    # Time 0.0s: Left (450ms)
+        (0.45, ('right',350)),  # Time 0.45s: Right (350ms)
+        (0.80, ('left', 450)),   # Time 0.80s: Left (450ms)
+        (1.25, ('left', 350)),   # Time 1.25s: Left (350ms)
+    ]
+    
+    start_time = time.time()
+    last_action_time = -1
+    
+    print("Starting sequence execution...")
+    print(f"Available actions: {digital_twin.actions}")
+    
+    for target_time, (direction, duration) in sequence:
+        current_time = time.time() - start_time
+        
+        # Wait until it's time for the next action
+        while current_time < target_time:
+            # Step the simulation
+            theta, theta_dot, x_pivot, currentmotor_acceleration = digital_twin.step()
+            
+            # Render current state
+            digital_twin.render(theta, x_pivot, f"Next action at {target_time:.1f}s (in {(target_time-current_time):.1f}s)")
+            
+            # Save data
+            with open('reports/recording.csv', mode='a', newline='') as file:
+                writer = csv.writer(file)
+                writer.writerow([time.time(), theta, theta_dot, x_pivot, currentmotor_acceleration])
+            
+            # Sleep for time step
+            time.sleep(digital_twin.delta_t)
+            
+            # Update current time
+            current_time = time.time() - start_time
+            
+            # Check for quit event
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    return False
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    return False
+        
+        # Perform the action
+        digital_twin.perform_action(direction, duration)
+        last_action_time = current_time
+        print(f"Executing action: {direction} ({duration}ms) at time {current_time:.1f}s")
+    
+    print("Sequence execution completed")
+    return True
 
 def plot_motor_dynamics(csv_file, save_path="reports/motor_Acc_vel_angle.png"):
     df = pd.read_csv(csv_file)
@@ -80,7 +164,6 @@ def plot_motor_dynamics(csv_file, save_path="reports/motor_Acc_vel_angle.png"):
     plt.suptitle("Motor Acceleration, Velocity, and Angle")
     plt.savefig(save_path)
     plt.show()
-
 
 def plot_system_state(csv_file, save_path="reports/state_space_analysis.png"):
     state_df = pd.read_csv(csv_file, header=None, names=["time", "theta", "theta_dot", "x_pivot", "acceleration"])
@@ -122,9 +205,14 @@ def plot_system_state(csv_file, save_path="reports/state_space_analysis.png"):
     plt.savefig(save_path)
     plt.show()
 
-if os.path.exists(motor_data_path):
-    plot_motor_dynamics(motor_data_path)
-else:
-    print(f"⚠️ Motor data not found at: {motor_data_path}")
+if __name__ == "__main__":
+    # Run in manual mode by default
+    simulate_pendulum(automated=False)
+    
+    # After simulation, plot the results
+    if os.path.exists(motor_data_path):
+        plot_motor_dynamics(motor_data_path)
+    else:
+        print(f"⚠️ Motor data not found at: {motor_data_path}")
 
-plot_system_state("reports/recording.csv")
+    plot_system_state("reports/recording.csv")
