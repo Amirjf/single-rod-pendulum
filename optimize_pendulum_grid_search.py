@@ -1,9 +1,3 @@
-"""
-Grid Search and Local Optimization for Pendulum Parameter Tuning
-This script implements a systematic grid search followed by local optimization
-to find optimal parameters for the pendulum model.
-"""
-
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -15,6 +9,7 @@ from scipy import signal
 import multiprocessing
 from functools import partial
 from scipy import stats
+from scipy.ndimage import gaussian_filter1d
 import os
 
 # Define the CSV filename for data loading
@@ -80,7 +75,6 @@ class ModifiedDigitalTwin(DigitalTwin):
         
         return np.array(theta_history)
 
-# Data loading function
 def load_real_data(filename=None, start_time=1.0):
     """Load and preprocess real pendulum data from CSV file"""
     if filename is None:
@@ -93,6 +87,8 @@ def load_real_data(filename=None, start_time=1.0):
     # Extract time and angle data
     time_array = df_trimmed['time_sec'].values
     theta_real = df_trimmed['theta_kalman'].values
+    
+    # Use velocity directly from the CSV file (from kalman_filter_plots_mina)
     theta_dot_real = df_trimmed['theta_dot_kalman'].values
     
     # Get initial conditions
@@ -103,10 +99,11 @@ def load_real_data(filename=None, start_time=1.0):
     return time_array, theta_real, theta_dot_real, theta0, theta_dot0
 
 def parallel_cost_function(params, time_array, theta_real, theta_dot_real, theta0, theta_dot0):
-    """Calculate the cost function for a given set of parameters"""
+    """Cost function for optimization with mass-independent error metrics"""
+    # Unpack parameters
     I_scale, damping_coefficient, mass = params
     
-    # Create twin with parameters
+    # Create twin with these parameters
     twin = ModifiedDigitalTwin()
     twin.mp = mass
     twin.l = 0.35
@@ -116,55 +113,72 @@ def parallel_cost_function(params, time_array, theta_real, theta_dot_real, theta
     twin.c_air = 0.0
     twin.currentmotor_acceleration = 0
     
-    # Simulate
+    # Simulate with these parameters
     theta_sim = twin.simulate_passive(theta0, theta_dot0, time_array)
     
-    # Calculate velocity from position data
-    dt = time_array[1] - time_array[0]
-    theta_dot_sim = np.gradient(theta_sim, dt)
+    # Check for invalid simulation
+    if np.any(np.isnan(theta_sim)) or np.any(np.isinf(theta_sim)):
+        return 1e6
     
-    # Calculate errors
     min_len = min(len(theta_sim), len(theta_real))
-    error = theta_sim[:min_len] - theta_real[:min_len]
+    dt = time_array[1] - time_array[0]
     
-    # Time domain error with exponential weighting
-    max_amplitude = np.max(np.abs(theta_real[:min_len]))
+    # Calculate theta_dot for simulation using the same method as kalman_filter_plots_mina.ipynb
+    # 1. Finite difference
+    theta_dot_sim_raw = np.gradient(theta_sim[:min_len], dt)
+    # 2. Gaussian smoothing (similar to kalman_filter_plots_mina.ipynb)
+    theta_dot_sim = gaussian_filter1d(theta_dot_sim_raw, sigma=2)
+    
+    # 1. Time-domain position error with exponential weighting
     time_weights = np.exp(np.linspace(0, 1, min_len))
-    time_domain_error = np.mean(time_weights * (error/max_amplitude)**2)
+    max_amplitude = np.max(np.abs(theta_real[:min_len]))
+    time_domain_error = np.mean(time_weights * ((theta_sim[:min_len] - theta_real[:min_len])/max_amplitude)**2)
     
-    # Frequency domain error
+    # 2. Frequency analysis
     n_points = 8192
     real_fft = fft(theta_real[:min_len], n_points)
     sim_fft = fft(theta_sim[:min_len], n_points)
+    
     real_mag = np.abs(real_fft[:n_points//2])
     sim_mag = np.abs(sim_fft[:n_points//2])
+    
     real_mag_norm = real_mag / np.max(real_mag)
     sim_mag_norm = sim_mag / np.max(sim_mag)
+    
     freq = np.fft.fftfreq(n_points, d=dt)[:n_points//2]
     freq_mask = (freq >= 0.9) & (freq <= 1.1)
+    
+    # Frequency matching error
     freq_error = np.mean((real_mag_norm[freq_mask] - sim_mag_norm[freq_mask])**2)
     
-    # Amplitude error
+    # 3. Peak amplitude analysis
     real_peaks = signal.find_peaks(np.abs(theta_real[:min_len]), distance=15)[0]
     sim_peaks = signal.find_peaks(np.abs(theta_sim[:min_len]), distance=15)[0]
+    
+    if len(real_peaks) < 3 or len(sim_peaks) < 3:
+        return 1e6
+    
     n_peaks = min(len(real_peaks), len(sim_peaks))
     real_amplitudes = np.abs(theta_real[real_peaks[:n_peaks]]) / max_amplitude
     sim_amplitudes = np.abs(theta_sim[sim_peaks[:n_peaks]]) / max_amplitude
+    
+    # Amplitude error
     amplitude_error = np.mean((real_amplitudes - sim_amplitudes)**2)
     
-    # Decay error
+    # Calculate amplitude decay rates
     real_decay = real_amplitudes[1:] / real_amplitudes[:-1]
     sim_decay = sim_amplitudes[1:] / sim_amplitudes[:-1]
     decay_error = np.mean((real_decay - sim_decay)**2)
     
+    # Weighted sum of errors
+    total_error = (
+        50 * time_domain_error +      # Time domain weight
+        600 * freq_error +            # Frequency weight
+        200 * amplitude_error +       # Amplitude weight
+        200 * decay_error             # Decay weight
+    )
     
-    # Total cost with weights
-    total_cost = (50 * time_domain_error + 
-                 600 * freq_error + 
-                 200 * amplitude_error + 
-                 200 * decay_error)
-    
-    return total_cost
+    return total_error
 
 def grid_search_optimize():
     """Perform grid search optimization"""
@@ -223,121 +237,28 @@ def grid_search_optimize():
     # Sort grid points by cost
     grid_points.sort(key=lambda x: x[1])
     
-    # Save grid search results
-    with open('reports/grid_search_results.txt', 'w') as f:
-        f.write("Grid Search Results\n")
-        f.write("=" * 50 + "\n\n")
-        f.write(f"Total points evaluated: {total_points}\n")
-        f.write(f"Best parameters found:\n")
-        f.write(f"I_scale: {best_params[0]:.6f}\n")
-        f.write(f"Damping: {best_params[1]:.8f}\n")
-        f.write(f"Mass: {best_params[2]:.6f}\n")
-        f.write(f"Best cost: {best_cost:.6f}\n\n")
-        f.write("Top 10 parameter combinations:\n")
-        f.write("-" * 50 + "\n")
-        for i, (params, cost) in enumerate(grid_points[:10], 1):
-            f.write(f"{i}. I_scale={params[0]:.6f}, Damping={params[1]:.8f}, "
-                   f"Mass={params[2]:.6f}, Cost={cost:.6f}\n")
-    
-    print("\nGrid Search completed!")
-    print(f"Best parameters found: I_scale={best_params[0]:.6f}, "
-          f"Damping={best_params[1]:.8f}, Mass={best_params[2]:.6f}")
+    # Print best results
+    print("\nGrid Search Results:")
+    print("-" * 50)
+    print(f"Best parameters found:")
+    print(f"I_scale: {best_params[0]:.6f}")
+    print(f"Damping: {best_params[1]:.6f}")
+    print(f"Mass: {best_params[2]:.6f}")
     print(f"Best cost: {best_cost:.6f}")
     
-    return best_params, best_cost
-
-def local_optimization(initial_params):
-    """Perform local optimization starting from the best grid search point"""
-    print("\nStarting Local Optimization...")
-    print("=" * 50)
+    # Create a result object for consistency with other optimization methods
+    class OptimizeResult:
+        pass
     
-    # Load real data
-    time_array, theta_real, theta_dot_real, theta0, theta_dot0 = load_real_data()
-    
-    # Define bounds for parameters
-    bounds = [
-        (initial_params[0] * 0.9, initial_params[0] * 1.1),  # I_scale ±10%
-        (initial_params[1] * 0.9, initial_params[1] * 1.1),  # Damping ±10%
-        (initial_params[2] * 0.9, initial_params[2] * 1.1)   # Mass ±10%
-    ]
-    
-    # Define the objective function
-    def objective(params):
-        return parallel_cost_function(params, time_array, theta_real, theta_dot_real, theta0, theta_dot0)
-    
-    # Run local optimization
-    result = minimize(
-        objective,
-        x0=initial_params,
-        method=LOCAL_OPT_METHOD,
-        bounds=bounds,
-        options={
-            'maxiter': MAX_ITERATIONS,
-            'xatol': TOLERANCE,
-            'fatol': TOLERANCE
-        }
-    )
-    
-    print(f"\nLocal Optimization Results ({LOCAL_OPT_METHOD}):")
-    print(f"Success: {result.success}")
-    print(f"Number of iterations: {result.nit}")
-    print(f"Number of function evaluations: {result.nfev}")
-    print(f"Final cost value: {result.fun:.6f}")
-    print(f"Optimal parameters:")
-    print(f"I_scale: {result.x[0]:.6f}")
-    print(f"Damping: {result.x[1]:.8f}")
-    print(f"Mass: {result.x[2]:.6f}")
+    result = OptimizeResult()
+    result.x = np.array(best_params)
+    result.fun = best_cost
+    result.success = True
+    result.nfev = total_points
+    result.nit = 1
+    result.message = "Grid search optimization completed successfully."
     
     return result
-
-def optimize_pendulum_params():
-    """Main optimization function combining grid search and local optimization"""
-    # First perform grid search
-    best_grid_params, best_grid_cost = grid_search_optimize()
-    
-    # Then perform local optimization starting from the best grid point
-    result = local_optimization(best_grid_params)
-    
-    # Create a result object similar to scipy.optimize.differential_evolution
-    class OptimizationResult:
-        def __init__(self, x, fun, success, nfev, nit, message=None):
-            self.x = x
-            self.fun = fun
-            self.success = success
-            self.nfev = nfev
-            self.nit = nit
-            self.message = message
-    
-    # Combine results from both methods
-    final_result = OptimizationResult(
-        x=result.x,
-        fun=result.fun,
-        success=result.success,
-        nfev=result.nfev,
-        nit=result.nit,
-        message=f"Grid Search + Local Optimization ({LOCAL_OPT_METHOD})"
-    )
-    
-    return final_result
-
-def add_parameter_box(fig, params, twin, rms_error, max_error):
-    """Add parameter information box to the figure"""
-    I_scale, damping_coefficient, mass = params
-    param_text = (
-        f'Model Parameters:\n'
-        f'I_scale = {I_scale:.6f}\n'
-        f'damping_coefficient = {damping_coefficient:.6f}\n'
-        f'mass = {mass:.6f} kg\n'
-        f'\nPhysical Values:\n'
-        f'Length = {twin.l:.3f} m\n'
-        f'I_eff = {twin.I:.6f} kg⋅m²\n'
-        f'\nPerformance:\n'
-        f'RMS Error = {rms_error:.6f} rad\n'
-        f'Max Error = {max_error:.6f} rad'
-    )
-    fig.text(0.98, 0.98, param_text, fontsize=10, family='monospace', 
-             verticalalignment='top', horizontalalignment='right',
-             bbox=dict(facecolor='white', alpha=0.8))
 
 def plot_comprehensive_analysis(theta_real, theta_sim, time_array, theta_dot_real=None):
     """Create comprehensive analysis plots with multiple metrics"""
@@ -347,8 +268,11 @@ def plot_comprehensive_analysis(theta_real, theta_sim, time_array, theta_dot_rea
     # Create twin to get g and l values
     twin = ModifiedDigitalTwin()
     
-    # Calculate theta_dot for simulation
-    theta_dot_sim = np.gradient(theta_sim, dt)
+    # Calculate theta_dot for simulation using the same method as kalman_filter_plots_mina.ipynb
+    # 1. Finite difference
+    theta_dot_sim_raw = np.gradient(theta_sim, dt)
+    # 2. Gaussian smoothing (similar to kalman_filter_plots_mina.ipynb)
+    theta_dot_sim = gaussian_filter1d(theta_dot_sim_raw, sigma=2)
     
     # Create figure with subplots
     fig = plt.figure(figsize=(20, 20))
@@ -363,9 +287,9 @@ def plot_comprehensive_analysis(theta_real, theta_sim, time_array, theta_dot_rea
     ax1.grid(True)
     ax1.legend()
     
-    # 2. Velocity comparison
+    # 2. Velocity comparison - use theta_dot_real directly from CSV
     ax2 = fig.add_subplot(4, 2, 2)
-    ax2.plot(time_array[:min_len], theta_dot_real[:min_len], 'b-', label='Real θ̇')
+    ax2.plot(time_array[:min_len], theta_dot_real[:min_len], 'b-', label='Real θ̇ (Kalman)')
     ax2.plot(time_array[:min_len], theta_dot_sim[:min_len], 'r--', label='Simulated θ̇')
     ax2.set_xlabel('Time (s)')
     ax2.set_ylabel('Angular Velocity (rad/s)')
@@ -451,14 +375,15 @@ def plot_comprehensive_analysis(theta_real, theta_sim, time_array, theta_dot_rea
     plt.tight_layout()
     return fig
 
-def simulate_and_plot(params):
+def simulate_and_plot(params, time_array=None, theta_real=None, theta_dot_real=None, theta0=None, theta_dot0=None):
     """Simulate pendulum motion and create analysis plots"""
-    # Load real data
-    time_array, theta_real, theta_dot_real, theta0, theta_dot0 = load_real_data()
+    if time_array is None:
+        time_array, theta_real, theta_dot_real, theta0, theta_dot0 = load_real_data()
     
+    # Unpack parameters
     I_scale, damping_coefficient, mass = params
     
-    # Create twin with parameters
+    # Create twin with these parameters
     twin = ModifiedDigitalTwin()
     twin.mp = mass
     twin.l = 0.35
@@ -468,15 +393,15 @@ def simulate_and_plot(params):
     twin.c_air = 0.0
     twin.currentmotor_acceleration = 0
     
-    # Simulate
+    # Simulate with these parameters
     theta_sim = twin.simulate_passive(theta0, theta_dot0, time_array)
     
-    # Calculate velocity from position data
+    # Calculate theta_dot for simulation using the same method as kalman_filter_plots_mina.ipynb
     dt = time_array[1] - time_array[0]
-    theta_dot_sim = np.gradient(theta_sim, dt)
-    theta_dot_real = np.gradient(theta_real, dt)
+    theta_dot_sim_raw = np.gradient(theta_sim, dt)
+    theta_dot_sim = gaussian_filter1d(theta_dot_sim_raw, sigma=2)
     
-    # Create plots
+    # Create comprehensive analysis plots
     fig = plot_comprehensive_analysis(theta_real, theta_sim, time_array, theta_dot_real)
     
     # Calculate metrics
@@ -489,10 +414,60 @@ def simulate_and_plot(params):
     add_parameter_box(fig, params, twin, rms_error, max_error)
     
     # Save plot in reports folder with GS-specific naming
-    plt.savefig(f'reports/half_theta_2_pendulum_GS_analysis.png', dpi=300)
+    plt.savefig('reports/half_theta_2_pendulum_GS_analysis.png', dpi=300, bbox_inches='tight')
     plt.show()
     
-    return theta_sim, error, I_scale, damping_coefficient, mass
+    return theta_sim, error
+
+def add_parameter_box(fig, params, twin=None, rms_error=None, max_error=None):
+    """Add a text box with model parameters to the figure"""
+    # Unpack parameters
+    I_scale, damping_coefficient, mass = params
+    
+    # Create twin if not provided
+    if twin is None:
+        twin = ModifiedDigitalTwin()
+        twin.mp = mass
+        twin.l = 0.35
+        twin.I_scale = I_scale
+        twin.I = I_scale * twin.mp * twin.l**2
+        twin.damping_coefficient = damping_coefficient
+    
+    # Calculate dynamic characteristics
+    g = 9.81  # gravity
+    L = twin.l  # pendulum length
+    I = twin.I  # moment of inertia
+    
+    # Natural frequency
+    omega_n = np.sqrt(g/L)  # rad/s
+    f_n = omega_n/(2*np.pi)  # Hz
+    
+    # Damping ratio
+    zeta = damping_coefficient/(2*np.sqrt(I*g/L))
+    
+    # Quality factor
+    Q = 1/(2*zeta) if zeta != 0 else float('inf')
+    
+    # Create parameter text
+    param_text = (
+        f"Parameters:\n"
+        f"I_scale: {I_scale:.4f}\n"
+        f"Damping: {damping_coefficient:.6f}\n"
+        f"Mass: {mass:.4f} kg\n"
+        f"I: {I:.6f} kg⋅m²\n"
+        f"f_n: {f_n:.4f} Hz\n"
+        f"ζ: {zeta:.4f}\n"
+        f"Q: {Q:.1f}"
+    )
+    
+    if rms_error is not None:
+        param_text += f"\nRMS Error: {rms_error:.6f}"
+    if max_error is not None:
+        param_text += f"\nMax Error: {max_error:.6f}"
+    
+    # Add text box
+    plt.figtext(0.02, 0.02, param_text, fontsize=8,
+                bbox=dict(facecolor='white', alpha=0.8))
 
 def analyze_parameter_sensitivity(result, time_array, theta_real, theta_dot_real, theta0, theta_dot0):
     """Analyze sensitivity of cost function to parameter variations"""
@@ -595,127 +570,56 @@ def analyze_parameter_sensitivity(result, time_array, theta_real, theta_dot_real
     mass_sensitivity = calculate_sensitivity(mass_costs)
     damping_sensitivity = calculate_sensitivity(damping_costs)
     
-    print("\nSensitivity Metrics (max increase/decrease relative to base cost):")
+    print("\nSensitivity Metrics (max increase/decrease relative to base):")
     print(f"I_scale:     +{I_sensitivity[0]*100:.1f}% / -{I_sensitivity[1]*100:.1f}%")
     print(f"Mass:        +{mass_sensitivity[0]*100:.1f}% / -{mass_sensitivity[1]*100:.1f}%")
     print(f"Damping:     +{damping_sensitivity[0]*100:.1f}% / -{damping_sensitivity[1]*100:.1f}%")
 
 def print_optimization_results(result, error, time_array, theta_real, theta_sim):
-    """Print comprehensive optimization results with physical parameters"""
-    # Create twin to get g and l values
-    twin = ModifiedDigitalTwin()
-    
+    """Print comprehensive optimization results."""
     # Unpack parameters
     I_scale, damping_coefficient, mass = result.x
-    l = twin.l  # pendulum length from class
-    g = twin.g  # gravity from class
-    I = I_scale * mass * l**2  # moment of inertia
     
-    # Calculate natural frequency
-    omega_n = np.sqrt(g/l)  # natural frequency in rad/s
-    f_n = omega_n/(2*np.pi)  # natural frequency in Hz
+    # Calculate dynamic characteristics
+    L = 0.35  # pendulum length
+    g = 9.81  # gravity
+    I = I_scale * mass * L**2  # moment of inertia
     
-    # Calculate damping ratio
-    zeta = damping_coefficient/(2*np.sqrt(I*g/l))  # damping ratio
+    # Natural frequency
+    omega_n = np.sqrt(g/L)  # rad/s
+    f_n = omega_n/(2*np.pi)  # Hz
     
-    # Calculate quality factor
-    Q = 1/(2*zeta) if zeta > 0 else float('inf')
+    # Damping ratio
+    zeta = damping_coefficient/(2*np.sqrt(I*g/L))
     
-    # Calculate time constant
-    tau = 1/(zeta*omega_n) if zeta > 0 else float('inf')
+    # Quality factor
+    Q = 1/(2*zeta) if zeta != 0 else float('inf')
     
-    # Calculate cost function breakdown
-    min_len = min(len(theta_sim), len(theta_real))
-    dt = time_array[1] - time_array[0]
-    theta_dot_sim = np.gradient(theta_sim[:min_len], dt)
-    
-    # Time domain error
-    max_amplitude = np.max(np.abs(theta_real[:min_len]))
-    time_weights = np.exp(np.linspace(0, 1, min_len))
-    time_domain_error = np.mean(time_weights * ((theta_sim[:min_len] - theta_real[:min_len])/max_amplitude)**2)
-    
-    # Frequency error
-    n_points = 8192
-    real_fft = fft(theta_real[:min_len], n_points)
-    sim_fft = fft(theta_sim[:min_len], n_points)
-    real_mag = np.abs(real_fft[:n_points//2])
-    sim_mag = np.abs(sim_fft[:n_points//2])
-    real_mag_norm = real_mag / np.max(real_mag)
-    sim_mag_norm = sim_mag / np.max(sim_mag)
-    freq = np.fft.fftfreq(n_points, d=dt)[:n_points//2]
-    freq_mask = (freq >= 0.9) & (freq <= 1.1)
-    freq_error = np.mean((real_mag_norm[freq_mask] - sim_mag_norm[freq_mask])**2)
-    
-    # Amplitude error
-    real_peaks = signal.find_peaks(np.abs(theta_real[:min_len]), distance=15)[0]
-    sim_peaks = signal.find_peaks(np.abs(theta_sim[:min_len]), distance=15)[0]
-    n_peaks = min(len(real_peaks), len(sim_peaks))
-    real_amplitudes = np.abs(theta_real[real_peaks[:n_peaks]]) / max_amplitude
-    sim_amplitudes = np.abs(theta_sim[sim_peaks[:n_peaks]]) / max_amplitude
-    amplitude_error = np.mean((real_amplitudes - sim_amplitudes)**2)
-    
-    # Decay error
-    real_decay = real_amplitudes[1:] / real_amplitudes[:-1]
-    sim_decay = sim_amplitudes[1:] / sim_amplitudes[:-1]
-    decay_error = np.mean((real_decay - sim_decay)**2)
-    
-    # Statistical Analysis
-    error_mean = np.mean(error)
-    error_std = np.std(error)
-    error_skew = stats.skew(error)
-    error_kurtosis = stats.kurtosis(error)
-    
-    # Physical Validation
-    # Calculate measured natural frequency from zero crossings
-    zero_crossings = np.where(np.diff(np.signbit(theta_real[:min_len])))[0]
-    if len(zero_crossings) >= 2:
-        measured_period = 2 * (time_array[zero_crossings[-1]] - time_array[zero_crossings[0]]) / (len(zero_crossings) - 1)
-        measured_freq = 1/measured_period
-        freq_error_percent = abs(measured_freq - f_n)/f_n * 100
-    else:
-        measured_freq = f_n
-        freq_error_percent = 0
-    
-    # Energy conservation analysis
-    E_real = 0.5 * l**2 * theta_dot_real[:min_len]**2 + g * l * (1 - np.cos(theta_real[:min_len]))
-    E_sim = 0.5 * l**2 * theta_dot_sim**2 + g * l * (1 - np.cos(theta_sim[:min_len]))
-    energy_error = np.mean((E_sim - E_real)/np.max(E_real))**2
+    # Calculate errors
+    rms_error = np.sqrt(np.mean(error**2))
+    max_error = np.max(np.abs(error))
     
     # Print results
     print("\nOptimization Results:")
     print("-" * 50)
     print("Physical Parameters:")
-    print(f"Mass (mp): {mass:.4f} kg")
-    print(f"Length (l): {l:.4f} m")
+    print(f"Mass (m): {mass:.4f} kg")
+    print(f"Length (L): {L:.4f} m")
     print(f"Moment of Inertia Scale: {I_scale:.4f}")
     print(f"Effective I: {I:.6f} kg⋅m²")
-    print(f"Damping Coefficient: {damping_coefficient:.8f}")
+    print(f"Damping Coefficient: {damping_coefficient:.6f} N⋅m⋅s/rad")
     
     print("\nDynamic Characteristics:")
     print(f"Natural Frequency: {f_n:.4f} Hz")
-    print(f"Measured Frequency: {measured_freq:.4f} Hz")
-    print(f"Frequency Error: {freq_error_percent:.2f}%")
     print(f"Damping Ratio: {zeta:.4f}")
-    print(f"Quality Factor: {Q:.2f}")
-    print(f"Time Constant: {tau:.4f} s")
+    print(f"Quality Factor: {Q:.4f}")
     
     print("\nPerformance Metrics:")
-    print(f"RMS Error: {np.sqrt(np.mean(error**2)):.4f} rad")
-    print(f"Max Absolute Error: {np.max(np.abs(error)):.4f} rad")
-    print(f"Mean Error: {error_mean:.4f} rad")
-    print(f"Error Std Dev: {error_std:.4f} rad")
-    print(f"Error Skewness: {error_skew:.4f}")
-    print(f"Error Kurtosis: {error_kurtosis:.4f}")
+    print(f"RMS Error: {rms_error:.6f} rad")
+    print(f"Max Error: {max_error:.6f} rad")
+    print(f"Final Cost: {result.fun:.6f}")
     
-    print("\nCost Function Breakdown:")
-    print(f"Time Domain Error: {50*time_domain_error:.4f}")
-    print(f"Frequency Error: {600*freq_error:.4f}")
-    print(f"Amplitude Error: {200*amplitude_error:.4f}")
-    print(f"Decay Error: {200*decay_error:.4f}")
-    print(f"Energy Error: {energy_error:.4f}")
-    print(f"Total Cost: {result.fun:.4f}")
-    
-    print("\nOptimization Summary:")
+    print("\nOptimization Info:")
     print(f"Success: {result.success}")
     print(f"Number of evaluations: {result.nfev}")
     print(f"Number of iterations: {result.nit}")
@@ -723,212 +627,95 @@ def print_optimization_results(result, error, time_array, theta_real, theta_sim)
     if hasattr(result, 'message'):
         print(f"Optimization message: {result.message}")
 
-def save_optimization_report(result, error, time_array, theta_real, theta_sim, filename="reports/GS_optimization_report.txt"):
-    """Save comprehensive optimization results to a file"""
-    # Create twin to get g and l values
-    twin = ModifiedDigitalTwin()
+def save_optimization_report(result, error, time_array, theta_real, theta_sim):
+    """Save optimization results to a text file."""
+    # Prepare report content
+    report = []
+    report.append("GRID SEARCH OPTIMIZATION REPORT")
+    report.append("=" * 50)
     
     # Unpack parameters
     I_scale, damping_coefficient, mass = result.x
-    l = twin.l  # pendulum length from class
-    g = twin.g  # gravity from class
-    I = I_scale * mass * l**2  # moment of inertia
     
-    # Calculate natural frequency
-    omega_n = np.sqrt(g/l)  # natural frequency in rad/s
-    f_n = omega_n/(2*np.pi)  # natural frequency in Hz
+    # Calculate dynamic characteristics
+    L = 0.35  # pendulum length
+    g = 9.81  # gravity
+    I = I_scale * mass * L**2  # moment of inertia
     
-    # Calculate damping ratio
-    zeta = damping_coefficient/(2*np.sqrt(I*g/l))  # damping ratio
+    # Natural frequency
+    omega_n = np.sqrt(g/L)  # rad/s
+    f_n = omega_n/(2*np.pi)  # Hz
     
-    # Calculate quality factor
-    Q = 1/(2*zeta) if zeta > 0 else float('inf')
+    # Damping ratio
+    zeta = damping_coefficient/(2*np.sqrt(I*g/L))
     
-    # Calculate time constant
-    tau = 1/(zeta*omega_n) if zeta > 0 else float('inf')
+    # Quality factor
+    Q = 1/(2*zeta) if zeta != 0 else float('inf')
     
-    # Calculate cost function breakdown
-    min_len = min(len(theta_sim), len(theta_real))
-    dt = time_array[1] - time_array[0]
-    theta_dot_sim = np.gradient(theta_sim[:min_len], dt)
+    # Calculate errors
+    rms_error = np.sqrt(np.mean(error**2))
+    max_error = np.max(np.abs(error))
     
-    # Time domain error
-    max_amplitude = np.max(np.abs(theta_real[:min_len]))
-    time_weights = np.exp(np.linspace(0, 1, min_len))
-    time_domain_error = np.mean(time_weights * ((theta_sim[:min_len] - theta_real[:min_len])/max_amplitude)**2)
-    
-    # Frequency error
-    n_points = 8192
-    real_fft = fft(theta_real[:min_len], n_points)
-    sim_fft = fft(theta_sim[:min_len], n_points)
-    real_mag = np.abs(real_fft[:n_points//2])
-    sim_mag = np.abs(sim_fft[:n_points//2])
-    real_mag_norm = real_mag / np.max(real_mag)
-    sim_mag_norm = sim_mag / np.max(sim_mag)
-    freq = np.fft.fftfreq(n_points, d=dt)[:n_points//2]
-    freq_mask = (freq >= 0.9) & (freq <= 1.1)
-    freq_error = np.mean((real_mag_norm[freq_mask] - sim_mag_norm[freq_mask])**2)
-    
-    # Amplitude error
-    real_peaks = signal.find_peaks(np.abs(theta_real[:min_len]), distance=15)[0]
-    sim_peaks = signal.find_peaks(np.abs(theta_sim[:min_len]), distance=15)[0]
-    n_peaks = min(len(real_peaks), len(sim_peaks))
-    real_amplitudes = np.abs(theta_real[real_peaks[:n_peaks]]) / max_amplitude
-    sim_amplitudes = np.abs(theta_sim[sim_peaks[:n_peaks]]) / max_amplitude
-    amplitude_error = np.mean((real_amplitudes - sim_amplitudes)**2)
-    
-    # Decay error
-    real_decay = real_amplitudes[1:] / real_amplitudes[:-1]
-    sim_decay = sim_amplitudes[1:] / sim_amplitudes[:-1]
-    decay_error = np.mean((real_decay - sim_decay)**2)
-    
-    # Statistical Analysis
-    error_mean = np.mean(error)
-    error_std = np.std(error)
-    error_skew = stats.skew(error)
-    error_kurtosis = stats.kurtosis(error)
-    
-    # Physical Validation
-    # Calculate measured natural frequency from zero crossings
-    zero_crossings = np.where(np.diff(np.signbit(theta_real[:min_len])))[0]
-    if len(zero_crossings) >= 2:
-        measured_period = 2 * (time_array[zero_crossings[-1]] - time_array[zero_crossings[0]]) / (len(zero_crossings) - 1)
-        measured_freq = 1/measured_period
-        freq_error_percent = abs(measured_freq - f_n)/f_n * 100
-    else:
-        measured_freq = f_n
-        freq_error_percent = 0
-    
-    # Energy conservation analysis
-    E_real = 0.5 * l**2 * theta_dot_real[:min_len]**2 + g * l * (1 - np.cos(theta_real[:min_len]))
-    E_sim = 0.5 * l**2 * theta_dot_sim**2 + g * l * (1 - np.cos(theta_sim[:min_len]))
-    energy_error = np.mean((E_sim - E_real)/np.max(E_real))**2
-    
-    # Create report content
-    report = []
-    report.append("PENDULUM OPTIMIZATION REPORT (GRID SEARCH + LOCAL OPTIMIZATION)")
-    report.append("=" * 50)
-    report.append(f"Date: {time.strftime('%Y-%m-%d %H:%M:%S')}")
-    report.append("")
-    
-    report.append("OPTIMIZATION PARAMETERS")
-    report.append("-" * 50)
-    report.append("Grid Search Parameters:")
-    report.append(f"I_scale range: {I_SCALE_RANGE[0]:.4f} to {I_SCALE_RANGE[-1]:.4f} ({len(I_SCALE_RANGE)} points)")
-    report.append(f"Damping range: {DAMPING_RANGE[0]:.6f} to {DAMPING_RANGE[-1]:.6f} ({len(DAMPING_RANGE)} points)")
-    report.append(f"Mass range: {MASS_RANGE[0]:.4f} to {MASS_RANGE[-1]:.4f} ({len(MASS_RANGE)} points)")
-    report.append("")
-    report.append("Local Optimization Parameters:")
-    report.append(f"Method: {LOCAL_OPT_METHOD}")
-    report.append(f"Maximum Iterations: {MAX_ITERATIONS}")
-    report.append(f"Tolerance: {TOLERANCE}")
-    report.append("")
-    
-    report.append("PHYSICAL PARAMETERS")
-    report.append("-" * 50)
-    report.append(f"Mass (mp): {mass:.4f} kg")
-    report.append(f"Length (l): {l:.4f} m")
+    # Add results to report
+    report.append("\nPhysical Parameters:")
+    report.append(f"Mass (m): {mass:.4f} kg")
+    report.append(f"Length (L): {L:.4f} m")
     report.append(f"Moment of Inertia Scale: {I_scale:.4f}")
     report.append(f"Effective I: {I:.6f} kg⋅m²")
-    report.append(f"Damping Coefficient: {damping_coefficient:.8f}")
-    report.append("")
+    report.append(f"Damping Coefficient: {damping_coefficient:.6f} N⋅m⋅s/rad")
     
-    report.append("DYNAMIC CHARACTERISTICS")
-    report.append("-" * 50)
+    report.append("\nDynamic Characteristics:")
     report.append(f"Natural Frequency: {f_n:.4f} Hz")
-    report.append(f"Measured Frequency: {measured_freq:.4f} Hz")
-    report.append(f"Frequency Error: {freq_error_percent:.2f}%")
     report.append(f"Damping Ratio: {zeta:.4f}")
-    report.append(f"Quality Factor: {Q:.2f}")
-    report.append(f"Time Constant: {tau:.4f} s")
-    report.append("")
+    report.append(f"Quality Factor: {Q:.4f}")
     
-    report.append("PERFORMANCE METRICS")
-    report.append("-" * 50)
-    report.append(f"RMS Error: {np.sqrt(np.mean(error**2)):.4f} rad")
-    report.append(f"Max Absolute Error: {np.max(np.abs(error)):.4f} rad")
-    report.append(f"Mean Error: {error_mean:.4f} rad")
-    report.append(f"Error Std Dev: {error_std:.4f} rad")
-    report.append(f"Error Skewness: {error_skew:.4f}")
-    report.append(f"Error Kurtosis: {error_kurtosis:.4f}")
-    report.append("")
+    report.append("\nPerformance Metrics:")
+    report.append(f"RMS Error: {rms_error:.6f} rad")
+    report.append(f"Max Error: {max_error:.6f} rad")
+    report.append(f"Final Cost: {result.fun:.6f}")
     
-    report.append("COST FUNCTION BREAKDOWN")
-    report.append("-" * 50)
-    report.append(f"Time Domain Error: {50*time_domain_error:.4f}")
-    report.append(f"Frequency Error: {600*freq_error:.4f}")
-    report.append(f"Amplitude Error: {200*amplitude_error:.4f}")
-    report.append(f"Decay Error: {200*decay_error:.4f}")
-    report.append(f"Energy Error: {energy_error:.4f}")
-    report.append(f"Total Cost: {result.fun:.4f}")
-    report.append("")
-    
-    report.append("OPTIMIZATION SUMMARY")
-    report.append("-" * 50)
+    report.append("\nOptimization Info:")
     report.append(f"Success: {result.success}")
     report.append(f"Number of evaluations: {result.nfev}")
     report.append(f"Number of iterations: {result.nit}")
     report.append(f"Final cost value: {result.fun:.6f}")
     if hasattr(result, 'message'):
-        report.append(f"Optimization message: {result.message}")
-    report.append("")
+        report.append(f"\nOptimization message: {result.message}")
     
-    # Add sensitivity analysis
-    report.append("SENSITIVITY ANALYSIS")
-    report.append("-" * 50)
-    
-    # Test I_scale variations
-    report.append("I_scale variations:")
-    for i in range(-2, 3):
-        if i == 0:
-            continue
-        factor = 1 + i*0.1
-        test_I_scale = I_scale * factor
-        test_params = [test_I_scale, damping_coefficient, mass]
-        test_cost = parallel_cost_function(test_params, time_array, theta_real, theta_dot_real, theta0, theta_dot0)
-        report.append(f"I_scale={test_I_scale:.4f} (change: {i*10:+d}%) → Cost={test_cost:.6f}")
-    
-    # Test mass variations
-    report.append("\nMass variations:")
-    for i in range(-2, 3):
-        if i == 0:
-            continue
-        factor = 1 + i*0.1
-        test_mass = mass * factor
-        test_params = [I_scale, damping_coefficient, test_mass]
-        test_cost = parallel_cost_function(test_params, time_array, theta_real, theta_dot_real, theta0, theta_dot0)
-        report.append(f"mass={test_mass:.4f} (change: {i*10:+d}%) → Cost={test_cost:.6f}")
-    
-    # Test damping coefficient variations
-    report.append("\nDamping coefficient variations:")
-    for i in range(-2, 3):
-        if i == 0:
-            continue
-        factor = 1 + i*0.1
-        test_damping = damping_coefficient * factor
-        test_params = [I_scale, test_damping, mass]
-        test_cost = parallel_cost_function(test_params, time_array, theta_real, theta_dot_real, theta0, theta_dot0)
-        report.append(f"damping={test_damping:.8f} (change: {i*10:+d}%) → Cost={test_cost:.6f}")
-    
-    # Write report to file
-    with open(filename, 'w') as f:
+    # Save report
+    with open('reports/GS_optimization_report.txt', 'w') as f:
         f.write('\n'.join(report))
-    
-    print(f"Optimization report saved to {filename}")
 
 # Main execution
 if __name__ == "__main__":
     # Load the real data first - this will be used throughout
     time_array, theta_real, theta_dot_real, theta0, theta_dot0 = load_real_data()
     
-    # Run the optimization
-    result = optimize_pendulum_params()
+    # Run the grid search optimization
+    result = grid_search_optimize()
     
     # Get the best parameters
     I_scale, damping_coefficient, mass = result.x
     
+    # Create twin with these parameters
+    twin = ModifiedDigitalTwin()
+    twin.mp = mass
+    twin.l = 0.35
+    twin.I_scale = I_scale
+    twin.I = I_scale * twin.mp * twin.l**2
+    twin.damping_coefficient = damping_coefficient
+    twin.c_air = 0.0
+    twin.currentmotor_acceleration = 0
+    
+    # Simulate with these parameters
+    theta_sim = twin.simulate_passive(theta0, theta_dot0, time_array)
+    
+    # Calculate error
+    min_len = min(len(theta_sim), len(theta_real))
+    error = theta_sim[:min_len] - theta_real[:min_len]
+    
     # Simulate and plot with best parameters
-    theta_sim, error, I_scale, damping_coefficient, mass = simulate_and_plot(result.x)
+    theta_sim, error = simulate_and_plot(result.x, time_array, theta_real, theta_dot_real, theta0, theta_dot0)
     
     # Print comprehensive results
     print_optimization_results(result, error, time_array, theta_real, theta_sim)
@@ -937,4 +724,4 @@ if __name__ == "__main__":
     save_optimization_report(result, error, time_array, theta_real, theta_sim)
     
     # Analyze parameter sensitivity
-    analyze_parameter_sensitivity(result, time_array, theta_real, theta_dot_real, theta0, theta_dot0) 
+    analyze_parameter_sensitivity(result, time_array, theta_real, theta_dot_real, theta0, theta_dot0)
