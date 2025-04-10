@@ -1,0 +1,38 @@
+PENDULUM OPTIMIZATION REPORT (DE)
+==================================================
+Date: 2025-04-10 21:02:11
+
+OPTIMIZATION PARAMETERS
+--------------------------------------------------
+Population Size: N/A
+Maximum Iterations: N/A
+Mutation Strategy: best1bin
+
+OPTIMIZATION RESULTS
+--------------------------------------------------
+Best Cost: 1.664229
+Number of Evaluations: 2828
+
+BEST PARAMETERS
+--------------------------------------------------
+I_scale: 0.705700
+Damping Coefficient: 0.008006
+Mass: 0.527869 kg
+
+PHYSICAL CHARACTERISTICS
+--------------------------------------------------
+Effective I: 0.045633 kg⋅m²
+Natural Frequency: 0.8426 Hz
+Damping Ratio: 0.0035
+Quality Factor: 141.3
+
+ERROR METRICS
+--------------------------------------------------
+RMS Error: 0.053630 rad
+Max Error: 0.364405 rad
+
+PARAMETER SENSITIVITIES
+--------------------------------------------------
+I_scale Sensitivity: 52.4486
+Damping Sensitivity: 1.3188
+Mass Sensitivity: 1.6578

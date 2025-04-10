@@ -1,0 +1,35 @@
+PENDULUM OPTIMIZATION REPORT (GS)
+==================================================
+Date: 2025-04-10 21:01:45
+
+OPTIMIZATION PARAMETERS
+--------------------------------------------------
+
+OPTIMIZATION RESULTS
+--------------------------------------------------
+Best Cost: 2.193864
+Number of Evaluations: 0
+
+BEST PARAMETERS
+--------------------------------------------------
+I_scale: 0.707143
+Damping Coefficient: 0.012143
+Mass: 0.785714 kg
+
+PHYSICAL CHARACTERISTICS
+--------------------------------------------------
+Effective I: 0.068062 kg⋅m²
+Natural Frequency: 0.8426 Hz
+Damping Ratio: 0.0044
+Quality Factor: 113.7
+
+ERROR METRICS
+--------------------------------------------------
+RMS Error: 0.058768 rad
+Max Error: 0.362208 rad
+
+PARAMETER SENSITIVITIES
+--------------------------------------------------
+I_scale Sensitivity: 39.9074
+Damping Sensitivity: 0.7137
+Mass Sensitivity: 0.7668
