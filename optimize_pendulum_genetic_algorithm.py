@@ -10,6 +10,7 @@ from functools import partial
 from scipy import stats
 import random
 from deap import base, creator, tools, algorithms
+from scipy.ndimage import gaussian_filter1d
 
 # Define the CSV filename for data loading
 csv_filename = "half_theta_2"
@@ -144,7 +145,7 @@ def optimize_pendulum_params():
     plt.title('Evolution of Fitness Over Generations')
     plt.legend()
     plt.grid(True)
-    plt.savefig('reports/ga_evolution.png')
+    plt.savefig('reports/GA_evolution.png')
     plt.close()
     
     return result
@@ -189,7 +190,7 @@ class ModifiedDigitalTwin(DigitalTwin):
             theta_ddot = self.get_theta_double_dot(self.theta, self.theta_dot)
             
             # Apply smooth enhanced friction near zero velocity
-            enhancement = 8.0 * (1.0 - np.tanh(abs(self.theta_dot) / static_threshold)**2)
+            enhancement = 5.0 * (1.0 - np.tanh(abs(self.theta_dot) / static_threshold)**2)
             theta_ddot -= enhancement * (self.damping_coefficient / (self.mp * self.I)) * self.theta_dot
             
             # Update state
@@ -246,8 +247,11 @@ def parallel_cost_function(params, time_array, theta_real, theta_dot_real, theta
     min_len = min(len(theta_sim), len(theta_real))
     dt = time_array[1] - time_array[0]
     
-    # Calculate velocity for simulation
-    theta_dot_sim = np.gradient(theta_sim[:min_len], dt)
+    # Calculate theta_dot for simulation using the same method as kalman_filter_plots_mina.ipynb
+    # 1. Finite difference
+    theta_dot_sim_raw = np.gradient(theta_sim[:min_len], dt)
+    # 2. Gaussian smoothing (similar to kalman_filter_plots_mina.ipynb)
+    theta_dot_sim = gaussian_filter1d(theta_dot_sim_raw, sigma=2)
     
     # 1. Time-domain position error with exponential weighting
     time_weights = np.exp(np.linspace(0, 1, min_len))
@@ -327,8 +331,12 @@ def plot_comprehensive_analysis(theta_real, theta_sim, time_array, theta_dot_rea
     # Create twin to get g and l values
     twin = ModifiedDigitalTwin()
     
-    # Calculate theta_dot for simulation
-    theta_dot_sim = np.gradient(theta_sim, dt)
+    # Calculate theta_dot for simulation only (use raw data for real)
+    # Calculate theta_dot for simulation using the same method as kalman_filter_plots_mina.ipynb
+    # 1. Finite difference
+    theta_dot_sim_raw = np.gradient(theta_sim, dt)
+    # 2. Gaussian smoothing (similar to kalman_filter_plots_mina.ipynb)
+    theta_dot_sim = gaussian_filter1d(theta_dot_sim_raw, sigma=2)
     
     # Create figure with subplots
     fig = plt.figure(figsize=(20, 20))
@@ -343,9 +351,9 @@ def plot_comprehensive_analysis(theta_real, theta_sim, time_array, theta_dot_rea
     ax1.grid(True)
     ax1.legend()
     
-    # 2. Velocity comparison
+    # 2. Velocity comparison - use theta_dot_real directly from CSV
     ax2 = fig.add_subplot(4, 2, 2)
-    ax2.plot(time_array[:min_len], theta_dot_real[:min_len], 'b-', label='Real θ̇')
+    ax2.plot(time_array[:min_len], theta_dot_real[:min_len], 'b-', label='Real θ̇ (Kalman)')
     ax2.plot(time_array[:min_len], theta_dot_sim[:min_len], 'r--', label='Simulated θ̇')
     ax2.set_xlabel('Time (s)')
     ax2.set_ylabel('Angular Velocity (rad/s)')
@@ -451,10 +459,11 @@ def simulate_and_plot(params):
     # Simulate
     theta_sim = twin.simulate_passive(theta0, theta_dot0, time_array)
     
-    # Calculate velocity from position data
+    # Calculate velocity for simulation only (use raw data for real)
     dt = time_array[1] - time_array[0]
-    theta_dot_sim = np.gradient(theta_sim, dt)
-    theta_dot_real = np.gradient(theta_real, dt)
+    # Calculate theta_dot for simulation using the same method as kalman_filter_plots_mina.ipynb
+    theta_dot_sim_raw = np.gradient(theta_sim, dt)
+    theta_dot_sim = gaussian_filter1d(theta_dot_sim_raw, sigma=2)
     
     # Create plots
     fig = plot_comprehensive_analysis(theta_real, theta_sim, time_array, theta_dot_real)
@@ -607,7 +616,9 @@ def print_optimization_results(result, error, time_array, theta_real, theta_sim)
     # Calculate cost function breakdown
     min_len = min(len(theta_sim), len(theta_real))
     dt = time_array[1] - time_array[0]
-    theta_dot_sim = np.gradient(theta_sim[:min_len], dt)
+    # Calculate theta_dot for simulation using the same method as kalman_filter_plots_mina.ipynb
+    theta_dot_sim_raw = np.gradient(theta_sim[:min_len], dt)
+    theta_dot_sim = gaussian_filter1d(theta_dot_sim_raw, sigma=2)
     
     # Time domain error
     max_amplitude = np.max(np.abs(theta_real[:min_len]))
@@ -730,7 +741,9 @@ def save_optimization_report(result, error, time_array, theta_real, theta_sim, f
     # Calculate cost function breakdown
     min_len = min(len(theta_sim), len(theta_real))
     dt = time_array[1] - time_array[0]
-    theta_dot_sim = np.gradient(theta_sim[:min_len], dt)
+    # Calculate theta_dot for simulation using the same method as kalman_filter_plots_mina.ipynb
+    theta_dot_sim_raw = np.gradient(theta_sim[:min_len], dt)
+    theta_dot_sim = gaussian_filter1d(theta_dot_sim_raw, sigma=2)
     
     # Time domain error
     max_amplitude = np.max(np.abs(theta_real[:min_len]))
