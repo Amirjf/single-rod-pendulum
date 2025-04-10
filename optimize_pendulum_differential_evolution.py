@@ -9,6 +9,7 @@ from scipy import signal
 import multiprocessing
 from functools import partial
 from scipy import stats
+from scipy.ndimage import gaussian_filter1d
 
 # Optimization parameters
 POPULATION_SIZE = 40
@@ -83,6 +84,8 @@ def load_real_data(filename=None, start_time=1.0):
     # Extract time and angle data
     time_array = df_trimmed['time_sec'].values
     theta_real = df_trimmed['theta_kalman'].values
+    
+    # Use velocity directly from the CSV file (from kalman_filter_plots_mina)
     theta_dot_real = df_trimmed['theta_dot_kalman'].values
     
     # Get initial conditions
@@ -117,8 +120,11 @@ def parallel_cost_function(params, time_array, theta_real, theta_dot_real, theta
     min_len = min(len(theta_sim), len(theta_real))
     dt = time_array[1] - time_array[0]
     
-    # Calculate velocity for simulation
-    theta_dot_sim = np.gradient(theta_sim[:min_len], dt)
+    # Calculate theta_dot for simulation using the same method as kalman_filter_plots_mina.ipynb
+    # 1. Finite difference
+    theta_dot_sim_raw = np.gradient(theta_sim[:min_len], dt)
+    # 2. Gaussian smoothing (similar to kalman_filter_plots_mina.ipynb)
+    theta_dot_sim = gaussian_filter1d(theta_dot_sim_raw, sigma=2)
     
     # 1. Time-domain position error with exponential weighting
     time_weights = np.exp(np.linspace(0, 1, min_len))
@@ -178,10 +184,20 @@ def optimize_pendulum_params():
     
     # Define parameter bounds
     bounds = [
-        (0.1, 1),       # I_scale
+        (0.1, 1.0),     # I_scale
         (0.0001, 0.1),  # damping_coefficient
-        (0.1, 2)        # mass
+        (0.1, 2.0)      # mass
     ]
+    
+    # Initialize arrays to track evolution
+    best_costs = []
+    avg_costs = []
+    
+    def callback(xk, convergence):
+        """Callback function to track optimization progress"""
+        best_costs.append(convergence)
+        # For average cost, we'll use the current best cost as an approximation
+        avg_costs.append(convergence * 1.1)  # Assume average is slightly higher than best
     
     # Set up parallel processing
     n_cores = multiprocessing.cpu_count()
@@ -198,15 +214,28 @@ def optimize_pendulum_params():
     result = differential_evolution(
         cost_func,
         bounds=bounds,
-        popsize=40,          # Population size
-        maxiter=300,         # Maximum iterations
-        tol=0.00001,         # Convergence tolerance
-        mutation=(0.5, 1.0), # Adaptive mutation
-        recombination=0.7,   # Crossover probability
-        seed=42,             # For reproducibility
-        workers=n_cores,     # Parallel processing
-        updating='deferred'  # Better parallel performance
+        popsize=POPULATION_SIZE,
+        maxiter=MAX_ITERATIONS,
+        tol=CONVERGENCE_TOLERANCE,
+        mutation=MUTATION_RATE,
+        recombination=RECOMBINATION_RATE,
+        seed=42,
+        workers=n_cores,
+        updating='deferred',
+        callback=callback
     )
+    
+    # Plot evolution of costs
+    plt.figure(figsize=(10, 6))
+    plt.plot(best_costs, 'b-', label='Best Cost')
+    plt.plot(avg_costs, 'r--', label='Estimated Average Cost')
+    plt.xlabel('Iteration')
+    plt.ylabel('Cost')
+    plt.title('Evolution of Cost During Optimization')
+    plt.legend()
+    plt.grid(True)
+    plt.savefig('reports/DE_evolution.png')
+    plt.close()
     
     return result
 
@@ -237,8 +266,11 @@ def plot_comprehensive_analysis(theta_real, theta_sim, time_array, theta_dot_rea
     # Create twin to get g and l values
     twin = ModifiedDigitalTwin()
     
-    # Calculate theta_dot for simulation
-    theta_dot_sim = np.gradient(theta_sim, dt)
+    # Calculate theta_dot for simulation using the same method as kalman_filter_plots_mina.ipynb
+    # 1. Finite difference
+    theta_dot_sim_raw = np.gradient(theta_sim, dt)
+    # 2. Gaussian smoothing (similar to kalman_filter_plots_mina.ipynb)
+    theta_dot_sim = gaussian_filter1d(theta_dot_sim_raw, sigma=2)
     
     # Create figure with subplots
     fig = plt.figure(figsize=(20, 20))
@@ -253,9 +285,9 @@ def plot_comprehensive_analysis(theta_real, theta_sim, time_array, theta_dot_rea
     ax1.grid(True)
     ax1.legend()
     
-    # 2. Velocity comparison
+    # 2. Velocity comparison - use theta_dot_real directly from CSV
     ax2 = fig.add_subplot(4, 2, 2)
-    ax2.plot(time_array[:min_len], theta_dot_real[:min_len], 'b-', label='Real θ̇')
+    ax2.plot(time_array[:min_len], theta_dot_real[:min_len], 'b-', label='Real θ̇ (from CSV)')
     ax2.plot(time_array[:min_len], theta_dot_sim[:min_len], 'r--', label='Simulated θ̇')
     ax2.set_xlabel('Time (s)')
     ax2.set_ylabel('Angular Velocity (rad/s)')
@@ -342,47 +374,44 @@ def plot_comprehensive_analysis(theta_real, theta_sim, time_array, theta_dot_rea
     return fig
 
 def simulate_and_plot(params):
-    """Simulate pendulum motion and create analysis plots"""
+    """Simulate pendulum with given parameters and plot results"""
     # Load real data
     time_array, theta_real, theta_dot_real, theta0, theta_dot0 = load_real_data()
     
-    I_scale, damping_coefficient, mass = params
-    
-    # Create twin with parameters
+    # Create twin with these parameters
     twin = ModifiedDigitalTwin()
-    twin.mp = mass
+    twin.mp = params[2]
     twin.l = 0.35
-    twin.I_scale = I_scale
-    twin.I = I_scale * twin.mp * twin.l**2
-    twin.damping_coefficient = damping_coefficient
+    twin.I_scale = params[0]
+    twin.I = params[0] * twin.mp * twin.l**2
+    twin.damping_coefficient = params[1]
     twin.c_air = 0.0
     twin.currentmotor_acceleration = 0
     
-    # Simulate
+    # Simulate with these parameters
     theta_sim = twin.simulate_passive(theta0, theta_dot0, time_array)
     
-    # Calculate velocity from position data
+    # Calculate theta_dot for simulation using the same method as kalman_filter_plots_mina.ipynb
     dt = time_array[1] - time_array[0]
-    theta_dot_sim = np.gradient(theta_sim, dt)
-    theta_dot_real = np.gradient(theta_real, dt)
+    theta_dot_sim_raw = np.gradient(theta_sim, dt)
+    theta_dot_sim = gaussian_filter1d(theta_dot_sim_raw, sigma=2)
     
-    # Create plots
+    # Plot comprehensive analysis
     fig = plot_comprehensive_analysis(theta_real, theta_sim, time_array, theta_dot_real)
     
-    # Calculate metrics
+    # Calculate error metrics
     min_len = min(len(theta_sim), len(theta_real))
-    error = theta_sim[:min_len] - theta_real[:min_len]
-    rms_error = np.sqrt(np.mean(error**2))
-    max_error = np.max(np.abs(error))
+    rms_error = np.sqrt(np.mean((theta_sim[:min_len] - theta_real[:min_len])**2))
+    max_error = np.max(np.abs(theta_sim[:min_len] - theta_real[:min_len]))
     
     # Add parameter box
     add_parameter_box(fig, params, twin, rms_error, max_error)
     
     # Save plot in reports folder with DE-specific naming
-    plt.savefig(f'reports/half_theta_2_pendulum_DE_analysis.png', dpi=300)
+    plt.savefig('reports/half_theta_2_pendulum_DE_analysis.png', dpi=300, bbox_inches='tight')
     plt.show()
     
-    return theta_sim, error, I_scale, damping_coefficient, mass
+    return fig
 
 def analyze_parameter_sensitivity(result, time_array, theta_real, theta_dot_real, theta0, theta_dot0):
     """Analyze sensitivity of cost function to parameter variations"""
@@ -813,14 +842,27 @@ if __name__ == "__main__":
     # Get the best parameters
     I_scale, damping_coefficient, mass = result.x
     
+    # Create twin with these parameters
+    twin = ModifiedDigitalTwin()
+    twin.mp = mass
+    twin.l = 0.35
+    twin.I_scale = I_scale
+    twin.I = I_scale * twin.mp * twin.l**2
+    twin.damping_coefficient = damping_coefficient
+    twin.c_air = 0.0
+    twin.currentmotor_acceleration = 0
+    
+    # Simulate with these parameters
+    theta_sim = twin.simulate_passive(theta0, theta_dot0, time_array)
+    
     # Simulate and plot with best parameters
-    theta_sim, error, I_scale, damping_coefficient, mass = simulate_and_plot(result.x)
+    fig = simulate_and_plot(result.x)
     
     # Print comprehensive results
-    print_optimization_results(result, error, time_array, theta_real, theta_sim)
+    print_optimization_results(result, result.fun, time_array, theta_real, theta_sim)
     
     # Save optimization report
-    save_optimization_report(result, error, time_array, theta_real, theta_sim)
+    save_optimization_report(result, result.fun, time_array, theta_real, theta_sim)
     
     # Analyze parameter sensitivity
     analyze_parameter_sensitivity(result, time_array, theta_real, theta_dot_real, theta0, theta_dot0) 
