@@ -1,6 +1,6 @@
 PENDULUM OPTIMIZATION REPORT (GA)
 ==================================================
-Date: 2025-04-10 21:03:25
+Date: 2025-04-11 05:32:34
 
 OPTIMIZATION PARAMETERS
 --------------------------------------------------
@@ -11,29 +11,29 @@ Mutation Rate: N/A
 
 OPTIMIZATION RESULTS
 --------------------------------------------------
-Best Cost: 2.224078
+Best Cost: 3.126238
 Number of Evaluations: 5000
 
 BEST PARAMETERS
 --------------------------------------------------
-I_scale: 0.709974
-Damping Coefficient: 0.010469
-Mass: 0.633899 kg
+I_scale: 0.716943
+Damping Coefficient: 0.018704
+Mass: 1.052216 kg
 
 PHYSICAL CHARACTERISTICS
 --------------------------------------------------
-Effective I: 0.055131 kg⋅m²
+Effective I: 0.092411 kg⋅m²
 Natural Frequency: 0.8426 Hz
-Damping Ratio: 0.0042
-Quality Factor: 118.7
+Damping Ratio: 0.0058
+Quality Factor: 86.0
 
 ERROR METRICS
 --------------------------------------------------
-RMS Error: 0.067438 rad
-Max Error: 0.357242 rad
+RMS Error: 0.086237 rad
+Max Error: 0.346905 rad
 
 PARAMETER SENSITIVITIES
 --------------------------------------------------
-I_scale Sensitivity: 39.7697
-Damping Sensitivity: 0.7705
-Mass Sensitivity: 1.0697
+I_scale Sensitivity: 28.3770
+Damping Sensitivity: 0.5641
+Mass Sensitivity: 0.6419
