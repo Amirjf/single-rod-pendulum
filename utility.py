@@ -13,7 +13,7 @@ import os
 csv_filename = "half_theta_2"
 
 # Helper functions for common calculations
-def create_twin_with_params(mass, I_scale, damping_coefficient):
+def create_twin_with_params(mass, I_scale, damping_coefficient, use_pygame=True):
     """Create and initialize a DigitalTwin with given parameters to match ModifiedDigitalTwin behavior"""
     twin = DigitalTwin()
     twin.mp = mass
@@ -24,6 +24,10 @@ def create_twin_with_params(mass, I_scale, damping_coefficient):
     twin.c_c = damping_coefficient  # Use c_c instead of damping_coefficient
     twin.c_air = 0.0
     twin.currentmotor_acceleration = 0
+    
+    # Set Pygame visualization flag
+    twin.use_pygame = use_pygame
+    
     return twin
 
 def calculate_fft_analysis(theta, dt, n_points=8192):
