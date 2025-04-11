@@ -9,6 +9,7 @@ from scipy import signal
 import multiprocessing
 from functools import partial
 from scipy import stats
+from utility import create_twin_with_params, load_real_data
 
 # Optimization parameters
 POPULATION_SIZE = 40
@@ -119,327 +120,304 @@ def load_real_data(filename=None):
     
     return time_array, theta_real, theta_dot_real, theta0, theta_dot0
 
-def parallel_cost_function(params, time_array, theta_real, theta_dot_real, theta0, theta_dot0):
-    """Cost function for optimization with motor parameters"""
-    # Unpack parameters
-    a_m, key_duration = params
+def objective_function(params, real_data):
+    """
+    Simplified objective function to minimize the difference between simulated and real motion.
+    Only compares data after the 'A' button press.
+    """
+    a_m, duration = params
+    print(f"\n{'='*50}")
+    print(f"Evaluating parameters: a_m={a_m:.3f}, duration={duration:.3f}")
+    print(f"{'='*50}")
     
-    # Create twin with these parameters
-    twin = ModifiedDigitalTwin()
+    # Create a new twin instance for each evaluation with Pygame disabled
+    mass = 0.527869
+    I_scale = 0.705700
+    damping_coefficient = 0.008006
+    twin = create_twin_with_params(mass, I_scale, damping_coefficient, use_pygame=False)
+    
+    # Set motor parameters
     twin.a_m = a_m
+    twin.duration_of_action_a = duration
     
-    # Simulate with these parameters
-    theta_sim = twin.simulate_key_press(theta0, theta_dot0, time_array, key_duration)
+    # Find when motor action starts in real data
+    x_pivot = real_data['x_pivot_m'].values
+    action_start_idx = np.where(np.abs(x_pivot) > 0.0001)[0][0]
+    action_start_time = real_data['time_sec'].iloc[action_start_idx]
+    print(f"Action starts at t={action_start_time:.3f}s")
     
-    # Check for invalid simulation
-    if np.any(np.isnan(theta_sim)) or np.any(np.isinf(theta_sim)):
-        return 1e6
+    # Get initial conditions from real data BEFORE the action
+    pre_action_idx = action_start_idx - 1
+    twin.theta = real_data['theta_kalman'].iloc[pre_action_idx]
+    twin.theta_dot = real_data['theta_dot_kalman'].iloc[pre_action_idx]
+    twin.t = real_data['time_sec'].iloc[pre_action_idx]
+    print(f"Initial conditions: theta={twin.theta:.3f}, theta_dot={twin.theta_dot:.3f}")
     
-    min_len = min(len(theta_sim), len(theta_real))
-    dt = time_array[1] - time_array[0]
+    # Update motor accelerations for the action
+    twin.update_motor_accelerations_real('left', duration)
     
-    # Calculate velocity for simulation
-    theta_dot_sim = np.gradient(theta_sim[:min_len], dt)
+    # Simulate motion with larger time steps
+    simulated_theta = []
+    simulated_theta_dot = []
+    simulated_x = []
+    simulated_times = []
     
-    # 1. Time-domain position error with exponential weighting
-    time_weights = np.exp(np.linspace(0, 1, min_len))
-    max_amplitude = np.max(np.abs(theta_real[:min_len]))
-    time_domain_error = np.mean(time_weights * ((theta_sim[:min_len] - theta_real[:min_len])/max_amplitude)**2)
+    # Simulate for the same duration as real data
+    end_time = real_data['time_sec'].iloc[-1]
+    steps = 0
+    last_progress = -1
     
-    # 2. Frequency analysis
-    n_points = 8192
-    real_fft = fft(theta_real[:min_len], n_points)
-    sim_fft = fft(theta_sim[:min_len], n_points)
+    print("\nSimulation Progress:")
+    print("Time (s) | Steps | Theta | Theta_dot | X_pivot")
+    print("-" * 60)
     
-    real_mag = np.abs(real_fft[:n_points//2])
-    sim_mag = np.abs(sim_fft[:n_points//2])
+    while twin.t <= end_time:
+        twin.step()
+        simulated_theta.append(twin.theta)
+        simulated_theta_dot.append(twin.theta_dot)
+        simulated_x.append(twin.x_pivot)
+        simulated_times.append(twin.t)
+        steps += 1
+        
+        # Print progress every 0.1 seconds
+        progress = int(twin.t * 10)
+        if progress > last_progress:
+            print(f"{twin.t:6.2f}s | {steps:5d} | {twin.theta:6.3f} | {twin.theta_dot:8.3f} | {twin.x_pivot:8.3f}")
+            last_progress = progress
     
-    real_mag_norm = real_mag / np.max(real_mag)
-    sim_mag_norm = sim_mag / np.max(sim_mag)
+    print(f"\nSimulation completed: {steps} steps, final time: {twin.t:.3f}s")
     
-    freq = np.fft.fftfreq(n_points, d=dt)[:n_points//2]
-    freq_mask = (freq >= 0.9) & (freq <= 1.1)
+    # Convert to numpy arrays
+    simulated_theta = np.array(simulated_theta)
+    simulated_theta_dot = np.array(simulated_theta_dot)
+    simulated_x = np.array(simulated_x)
+    simulated_times = np.array(simulated_times)
     
-    # Frequency matching error
-    freq_error = np.mean((real_mag_norm[freq_mask] - sim_mag_norm[freq_mask])**2)
+    # Find indices where simulated time matches real time after action start
+    mask = simulated_times >= action_start_time
+    simulated_theta = simulated_theta[mask]
+    simulated_theta_dot = simulated_theta_dot[mask]
+    simulated_x = simulated_x[mask]
     
-    # 3. Peak amplitude analysis
-    real_peaks = signal.find_peaks(np.abs(theta_real[:min_len]), distance=15)[0]
-    sim_peaks = signal.find_peaks(np.abs(theta_sim[:min_len]), distance=15)[0]
+    real_theta = real_data['theta_kalman'].values[action_start_idx:]
+    real_theta_dot = real_data['theta_dot_kalman'].values[action_start_idx:]
+    real_x = real_data['x_pivot_m'].values[action_start_idx:]
     
-    if len(real_peaks) < 3 or len(sim_peaks) < 3:
-        return 1e6
+    # Ensure same length
+    min_len = min(len(simulated_theta), len(real_theta))
+    simulated_theta = simulated_theta[:min_len]
+    simulated_theta_dot = simulated_theta_dot[:min_len]
+    simulated_x = simulated_x[:min_len]
+    real_theta = real_theta[:min_len]
+    real_theta_dot = real_theta_dot[:min_len]
+    real_x = real_x[:min_len]
     
-    n_peaks = min(len(real_peaks), len(sim_peaks))
-    real_amplitudes = np.abs(theta_real[real_peaks[:n_peaks]]) / max_amplitude
-    sim_amplitudes = np.abs(theta_sim[sim_peaks[:n_peaks]]) / max_amplitude
+    # Simplified cost calculation
+    theta_cost = np.mean((simulated_theta - real_theta) ** 2)
+    theta_dot_cost = np.mean((simulated_theta_dot - real_theta_dot) ** 2)
+    x_cost = np.mean((simulated_x - real_x) ** 2)
     
-    # Amplitude error
-    amplitude_error = np.mean((real_amplitudes - sim_amplitudes)**2)
+    # Weight the costs
+    total_cost = theta_cost + 0.1 * theta_dot_cost + 0.01 * x_cost
     
-    # Calculate amplitude decay rates
-    real_decay = real_amplitudes[1:] / real_amplitudes[:-1]
-    sim_decay = sim_amplitudes[1:] / sim_amplitudes[:-1]
-    decay_error = np.mean((real_decay - sim_decay)**2)
+    print("\nCost Analysis:")
+    print(f"Theta cost: {theta_cost:.6f}")
+    print(f"Theta dot cost: {theta_dot_cost:.6f}")
+    print(f"X pivot cost: {x_cost:.6f}")
+    print(f"Total cost: {total_cost:.6f}")
+    print(f"{'='*50}\n")
     
-    # Print debug info occasionally
-    if np.random.random() < 0.01:  # Print 1% of the time
-        print(f"\nDebug - a_m: {a_m:.4f}, duration: {key_duration:.1f}ms")
-        print(f"Errors - Time: {time_domain_error:.4f}, Freq: {freq_error:.4f}, Amp: {amplitude_error:.4f}")
-    
-    # Weighted sum of errors with adjusted weights
-    total_error = (
-        100 * time_domain_error +     # Time domain weight
-        300 * freq_error +            # Frequency weight
-        200 * amplitude_error +       # Amplitude weight
-        100 * decay_error            # Decay weight
-    )
-    
-    return total_error
+    return total_cost
 
 def optimize_motor_params():
-    """Run the optimization process using differential evolution"""
-    # Load the real data
-    time_array, theta_real, theta_dot_real, theta0, theta_dot0 = load_real_data()
+    """Run optimization to find best motor parameters with reduced iterations"""
+    print("\nStarting motor parameter optimization...")
     
-    # Define parameter bounds
+    # Load real data
+    real_data = pd.read_csv('datasets/filtered_datasets/move_a_17.7_kalman_output.csv')
+    print(f"Loaded {len(real_data)} data points")
+    print(f"Time range: {real_data['time_sec'].min():.3f}s to {real_data['time_sec'].max():.3f}s")
+    
+    # Define bounds for parameters
     bounds = [
-        (0.1, 1.0),     # a_m: motor force coefficient
-        (300, 600)      # key_duration (ms)
+        (0.1, 10.0),    # a_m: motor acceleration
+        (0.3, 0.6)      # duration_of_action_a: duration in seconds
     ]
+    print(f"Parameter bounds: a_m={bounds[0]}, duration={bounds[1]}")
     
-    # Set up parallel processing
-    n_cores = multiprocessing.cpu_count()
+    # Create a pool of workers
+    num_cores = multiprocessing.cpu_count()
+    print(f"\nUsing {num_cores} CPU cores for parallel optimization")
     
-    # Create partial function with fixed arguments
-    cost_func = partial(parallel_cost_function, 
-                       time_array=time_array,
-                       theta_real=theta_real,
-                       theta_dot_real=theta_dot_real,
-                       theta0=theta0,
-                       theta_dot0=theta_dot0)
+    # Create a partial function with fixed arguments
+    obj_func = partial(objective_function, real_data=real_data)
     
-    # Run optimization
+    print("\nStarting differential evolution optimization...")
+    print("This may take a while. Progress will be shown for each evaluation.")
+    
+    # Run differential evolution optimization with reduced iterations
     result = differential_evolution(
-        cost_func,
+        obj_func,
         bounds=bounds,
-        popsize=POPULATION_SIZE,
-        maxiter=MAX_ITERATIONS,
-        tol=CONVERGENCE_TOLERANCE,
-        mutation=MUTATION_RATE,
-        recombination=RECOMBINATION_RATE,
+        maxiter=50,  # Reduced from 100
+        popsize=10,  # Reduced from 20
+        tol=0.01,
+        mutation=(0.5, 1.0),
+        recombination=0.7,
         seed=42,
-        workers=n_cores,
-        updating='deferred'
+        workers=num_cores,
+        updating='deferred',
+        callback=lambda x, convergence: print(f"\nIteration complete. Best parameters so far: a_m={x[0]:.3f}, duration={x[1]:.3f}, cost={convergence:.6f}")
     )
     
-    return result
+    # Print optimization results
+    print("\nOptimization Results:")
+    print(f"Best a_m: {result.x[0]:.6f}")
+    print(f"Best duration: {result.x[1]:.6f} seconds")
+    print(f"Best cost: {result.fun:.6f}")
+    print(f"Number of evaluations: {result.nfev}")
+    print(f"Success: {result.success}")
+    print(f"Message: {result.message}")
+    
+    # Simulate and plot with best parameters
+    print("\nSimulating with best parameters...")
+    simulated_theta, simulated_theta_dot, a_m, duration = simulate_and_plot(result.x)
+    
+    return result.x
 
 def simulate_and_plot(params):
     """Simulate and plot results with given parameters"""
     # Load real data
-    time_array, theta_real, theta_dot_real, theta0, theta_dot0 = load_real_data()
+    real_data = pd.read_csv('datasets/filtered_datasets/move_a_17.7_kalman_output.csv')
     
-    # Create twin with optimized parameters
-    twin = ModifiedDigitalTwin()
-    a_m, key_duration = params
+    # Find when motor action starts in real data
+    x_pivot = real_data['x_pivot_m'].values
+    action_start_idx = np.where(np.abs(x_pivot) > 0.0001)[0][0]  # First non-zero position
+    action_start_time = real_data['time_sec'].iloc[action_start_idx]
+    
+    # Create digital twin with initial parameters
+    mass = 0.527869  # From differential evolution optimization
+    I_scale = 0.705700  # From differential evolution optimization
+    damping_coefficient = 0.008006  # From differential evolution optimization
+    
+    # Use Pygame for the final visualization
+    twin = create_twin_with_params(mass, I_scale, damping_coefficient, use_pygame=True)
+    
+    # Set motor parameters
+    a_m, duration = params
     twin.a_m = a_m
+    twin.duration_of_action_a = duration
     
-    # Simulate
-    theta_sim = twin.simulate_key_press(theta0, theta_dot0, time_array, key_duration)
+    # Get initial conditions from real data BEFORE the action
+    pre_action_idx = action_start_idx - 1  # Use the last point before action
+    twin.theta = real_data['theta_kalman'].iloc[pre_action_idx]
+    twin.theta_dot = real_data['theta_dot_kalman'].iloc[pre_action_idx]
+    twin.t = real_data['time_sec'].iloc[pre_action_idx]
     
-    # Calculate error and derivatives
-    min_len = min(len(theta_sim), len(theta_real))
-    dt = time_array[1] - time_array[0]
-    theta_dot_sim = np.gradient(theta_sim[:min_len], dt)
-    error = theta_sim[:min_len] - theta_real[:min_len]
+    # Update motor accelerations for the action
+    twin.update_motor_accelerations_real('left', duration)  # Duration is already in seconds
     
-    # Create comprehensive analysis plots
-    plt.figure(figsize=(20, 20))
+    # Simulate motion with best parameters
+    simulated_theta = []
+    simulated_theta_dot = []
+    simulated_x = []
+    times = []
     
-    # 1. Time-domain position comparison
-    plt.subplot(4, 2, 1)
-    plt.plot(time_array[:min_len], theta_real[:min_len], 'b-', label='Real θ')
-    plt.plot(time_array[:min_len], theta_sim[:min_len], 'r--', label='Simulated θ')
-    plt.axvline(x=key_duration/1000.0, color='g', linestyle='--', label=f'Key Press End ({key_duration}ms)')
+    # Simulate for the same duration as real data
+    end_time = real_data['time_sec'].iloc[-1]
+    while twin.t <= end_time:
+        # Update twin state
+        twin.step()
+        
+        # Store simulated values
+        simulated_theta.append(twin.theta)
+        simulated_theta_dot.append(twin.theta_dot)
+        simulated_x.append(twin.x_pivot)
+        times.append(twin.t)
+    
+    # Create plots
+    plt.figure(figsize=(15, 10))
+    
+    # Plot theta
+    plt.subplot(3, 1, 1)
+    plt.plot(real_data['time_sec'], real_data['theta_kalman'], 'b-', label='Real')
+    plt.plot(times, simulated_theta, 'r--', label='Simulated')
+    plt.axvline(x=action_start_time, color='g', linestyle='--', label='Action Start')
     plt.xlabel('Time (s)')
-    plt.ylabel('Angle (rad)')
-    plt.title('Pendulum Angle: Real vs Simulated')
-    plt.grid(True)
+    plt.ylabel('θ (rad)')
+    plt.title('Angle Comparison')
     plt.legend()
+    plt.grid(True)
     
-    # 2. Velocity comparison
-    plt.subplot(4, 2, 2)
-    plt.plot(time_array[:min_len], theta_dot_real[:min_len], 'b-', label='Real θ̇')
-    plt.plot(time_array[:min_len], theta_dot_sim[:min_len], 'r--', label='Simulated θ̇')
-    plt.axvline(x=key_duration/1000.0, color='g', linestyle='--', label=f'Key Press End ({key_duration}ms)')
+    # Plot theta_dot
+    plt.subplot(3, 1, 2)
+    plt.plot(real_data['time_sec'], real_data['theta_dot_kalman'], 'b-', label='Real')
+    plt.plot(times, simulated_theta_dot, 'r--', label='Simulated')
+    plt.axvline(x=action_start_time, color='g', linestyle='--', label='Action Start')
     plt.xlabel('Time (s)')
-    plt.ylabel('Angular Velocity (rad/s)')
-    plt.title('Angular Velocity Comparison')
-    plt.grid(True)
-    plt.legend()
-    
-    # 3. Phase space plot
-    plt.subplot(4, 2, 3)
-    plt.plot(theta_real[:min_len], theta_dot_real[:min_len], 'b-', label='Real', alpha=0.5)
-    plt.plot(theta_sim[:min_len], theta_dot_sim[:min_len], 'r--', label='Simulated', alpha=0.5)
-    plt.xlabel('θ (rad)')
     plt.ylabel('θ̇ (rad/s)')
-    plt.title('Phase Space Plot')
-    plt.grid(True)
+    plt.title('Angular Velocity Comparison')
     plt.legend()
+    plt.grid(True)
     
-    # 4. Error analysis
-    plt.subplot(4, 2, 4)
-    plt.plot(time_array[:min_len], error, 'g-', label='Error')
-    plt.axvline(x=key_duration/1000.0, color='g', linestyle='--', label=f'Key Press End ({key_duration}ms)')
+    # Plot x_pivot
+    plt.subplot(3, 1, 3)
+    plt.plot(real_data['time_sec'], real_data['x_pivot_m'], 'b-', label='Real')
+    plt.plot(times, simulated_x, 'r--', label='Simulated')
+    plt.axvline(x=action_start_time, color='g', linestyle='--', label='Action Start')
     plt.xlabel('Time (s)')
-    plt.ylabel('Error (rad)')
-    plt.title('Simulation Error')
-    plt.grid(True)
+    plt.ylabel('x_pivot (m)')
+    plt.title('Pivot Displacement Comparison')
     plt.legend()
-    
-    # 5. Frequency analysis
-    n_points = 8192
-    real_fft = fft(theta_real[:min_len], n_points)
-    sim_fft = fft(theta_sim[:min_len], n_points)
-    freq = np.fft.fftfreq(n_points, d=dt)[:n_points//2]
-    
-    plt.subplot(4, 2, 5)
-    plt.plot(freq, np.abs(real_fft[:n_points//2]), 'b-', label='Real', alpha=0.5)
-    plt.plot(freq, np.abs(sim_fft[:n_points//2]), 'r--', label='Simulated', alpha=0.5)
-    plt.xlabel('Frequency (Hz)')
-    plt.ylabel('Magnitude')
-    plt.title('Frequency Spectrum')
-    plt.grid(True)
-    plt.legend()
-    
-    # 6. Energy analysis
-    l = twin.l
-    g = twin.g
-    E_real = 0.5 * l**2 * theta_dot_real[:min_len]**2 + g * l * (1 - np.cos(theta_real[:min_len]))
-    E_sim = 0.5 * l**2 * theta_dot_sim**2 + g * l * (1 - np.cos(theta_sim[:min_len]))
-    
-    plt.subplot(4, 2, 6)
-    plt.plot(time_array[:min_len], E_real, 'b-', label='Real', alpha=0.5)
-    plt.plot(time_array[:min_len], E_sim, 'r--', label='Simulated', alpha=0.5)
-    plt.axvline(x=key_duration/1000.0, color='g', linestyle='--', label=f'Key Press End ({key_duration}ms)')
-    plt.xlabel('Time (s)')
-    plt.ylabel('Energy (J)')
-    plt.title('System Energy')
-    plt.grid(True)
-    plt.legend()
-    
-    # 7. Motor force profile
-    plt.subplot(4, 2, 7)
-    motor_force = np.zeros_like(time_array[:min_len])
-    motor_force[time_array[:min_len] <= key_duration/1000.0] = -a_m
-    plt.plot(time_array[:min_len], motor_force, 'b-', label='Motor Force')
-    plt.axvline(x=key_duration/1000.0, color='g', linestyle='--', label=f'Key Press End ({key_duration}ms)')
-    plt.xlabel('Time (s)')
-    plt.ylabel('Motor Force')
-    plt.title('Motor Force Profile')
-    plt.grid(True)
-    plt.legend()
-    
-    # 8. Error distribution
-    plt.subplot(4, 2, 8)
-    plt.hist(error, bins=50, density=True, alpha=0.7, color='g')
-    plt.xlabel('Error (rad)')
-    plt.ylabel('Density')
-    plt.title('Error Distribution')
     plt.grid(True)
     
     plt.tight_layout()
-    plt.savefig('reports/optimization_results.png', dpi=300, bbox_inches='tight')
-    plt.show()  # This will keep the plot window open
+    plt.savefig('optimization_results.png')
+    plt.show()
     
-    return theta_sim, error, a_m, key_duration
+    return simulated_theta, simulated_theta_dot, a_m, duration
 
-def print_optimization_results(result, error, time_array, theta_real, theta_sim):
-    """Print comprehensive optimization results"""
-    # Unpack parameters
-    a_m, key_duration = result.x
+def plot_comparison(real_data, simulated_data, action_start_time):
+    """Plot comparison between real and simulated data"""
+    plt.figure(figsize=(15, 10))
     
-    # Calculate error metrics
-    min_len = min(len(theta_sim), len(theta_real))
-    dt = time_array[1] - time_array[0]
-    theta_dot_sim = np.gradient(theta_sim[:min_len], dt)
+    # Plot theta
+    plt.subplot(3, 1, 1)
+    plt.plot(real_data['time_sec'], real_data['theta_kalman'], 'b-', label='Real', alpha=0.7)
+    plt.plot(simulated_data['times'], simulated_data['theta'], 'r--', label='Simulated', alpha=0.7)
+    plt.axvline(x=action_start_time, color='g', linestyle='--', label='Action Start')
+    plt.xlabel('Time (s)')
+    plt.ylabel('θ (rad)')
+    plt.title('Angle Comparison')
+    plt.legend()
+    plt.grid(True)
     
-    # Time domain error
-    max_amplitude = np.max(np.abs(theta_real[:min_len]))
-    time_weights = np.exp(np.linspace(0, 1, min_len))
-    time_domain_error = np.mean(time_weights * ((theta_sim[:min_len] - theta_real[:min_len])/max_amplitude)**2)
+    # Plot theta_dot
+    plt.subplot(3, 1, 2)
+    plt.plot(real_data['time_sec'], real_data['theta_dot_kalman'], 'b-', label='Real', alpha=0.7)
+    plt.plot(simulated_data['times'], simulated_data['theta_dot'], 'r--', label='Simulated', alpha=0.7)
+    plt.axvline(x=action_start_time, color='g', linestyle='--', label='Action Start')
+    plt.xlabel('Time (s)')
+    plt.ylabel('θ̇ (rad/s)')
+    plt.title('Angular Velocity Comparison')
+    plt.legend()
+    plt.grid(True)
     
-    # Print results
-    print("\nOptimization Results:")
-    print("-" * 50)
-    print("Motor Parameters:")
-    print(f"Motor Force Transfer Coefficient (a_m): {a_m:.4f}")
-    print(f"Key Press Duration: {key_duration:.1f} ms")
-    print(f"Final Error: {result.fun:.6f}")
-    print(f"Time Domain Error: {time_domain_error:.6f}")
-
-def save_optimization_report(result, error, time_array, theta_real, theta_sim, filename="reports/motor_optimization_report.txt"):
-    """Save comprehensive optimization results to a file"""
-    # Unpack parameters
-    a_m, key_duration = result.x
+    # Plot x_pivot
+    plt.subplot(3, 1, 3)
+    plt.plot(real_data['time_sec'], real_data['x_pivot_m'], 'b-', label='Real', alpha=0.7)
+    plt.plot(simulated_data['times'], simulated_data['x'], 'r--', label='Simulated', alpha=0.7)
+    plt.axvline(x=action_start_time, color='g', linestyle='--', label='Action Start')
+    plt.xlabel('Time (s)')
+    plt.ylabel('x_pivot (m)')
+    plt.title('Pivot Displacement Comparison')
+    plt.legend()
+    plt.grid(True)
     
-    # Calculate error metrics
-    min_len = min(len(theta_sim), len(theta_real))
-    dt = time_array[1] - time_array[0]
-    theta_dot_sim = np.gradient(theta_sim[:min_len], dt)
-    
-    # Time domain error
-    max_amplitude = np.max(np.abs(theta_real[:min_len]))
-    time_weights = np.exp(np.linspace(0, 1, min_len))
-    time_domain_error = np.mean(time_weights * ((theta_sim[:min_len] - theta_real[:min_len])/max_amplitude)**2)
-    
-    # Create report content
-    report = []
-    report.append("MOTOR PARAMETER OPTIMIZATION REPORT")
-    report.append("=" * 50)
-    report.append(f"Date: {time.strftime('%Y-%m-%d %H:%M:%S')}")
-    report.append("")
-    
-    report.append("OPTIMIZATION PARAMETERS")
-    report.append("-" * 50)
-    report.append(f"Population Size: {POPULATION_SIZE}")
-    report.append(f"Maximum Iterations: {MAX_ITERATIONS}")
-    report.append(f"Convergence Tolerance: {CONVERGENCE_TOLERANCE}")
-    report.append(f"Mutation Rate: {MUTATION_RATE}")
-    report.append(f"Recombination Rate: {RECOMBINATION_RATE}")
-    report.append("")
-    
-    report.append("OPTIMIZATION RESULTS")
-    report.append("-" * 50)
-    report.append(f"Motor Force Transfer Coefficient (a_m): {a_m:.4f}")
-    report.append(f"Key Press Duration: {key_duration:.1f} ms")
-    report.append(f"Final Error: {result.fun:.6f}")
-    report.append(f"Time Domain Error: {time_domain_error:.6f}")
-    
-    # Write report to file
-    with open(filename, 'w') as f:
-        f.write('\n'.join(report))
-    
-    print(f"Optimization report saved to {filename}")
+    plt.tight_layout()
+    plt.savefig('optimization_results.png')
+    plt.close()
 
 # Main execution
 if __name__ == "__main__":
-    # Load the real data first - this will be used throughout
-    time_array, theta_real, theta_dot_real, theta0, theta_dot0 = load_real_data()
-    
-    # Run the optimization
-    result = optimize_motor_params()
-    
-    # Get the best parameters
-    a_m, key_duration = result.x
-    
-    # Simulate and plot with best parameters
-    theta_sim, error, a_m, key_duration = simulate_and_plot(result.x)
-    
-    # Print comprehensive results
-    print_optimization_results(result, error, time_array, theta_real, theta_sim)
-    
-    # Save optimization report
-    save_optimization_report(result, error, time_array, theta_real, theta_sim) 
+    result = optimize_motor_params() 
