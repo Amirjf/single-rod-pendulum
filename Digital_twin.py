@@ -25,7 +25,7 @@ class DigitalTwin:
         self.theta_dot = 0.  # Angular velocity (rad/s)
         self.theta_double_dot = 0.  # Angular acceleration (rad/s²)
         self.x_pivot = 0  # Cart position (m)
-        self.delta_t = 0.025  # Time step (s) - optimized for visualization
+        self.delta_t = 0.01  # Time step (s) - optimized for visualization
         self.k = 0.0174  
         # self.delta_t = 0.0284  # Alternative time step for sensor matching
 
@@ -33,14 +33,14 @@ class DigitalTwin:
         self.g = 9.8065  # Gravity (m/s²)
         self.l = 0.35  # Pendulum length (m)
         self.c_air = 0.001  # Air friction coefficient
-        self.c_c = 0.001  # Coulomb friction coefficient (reduced from 0.00562279)
-        self.a_m = 0.14 # Motor force transfer coefficient
+        self.c_c = 0.008006  # Coulomb friction coefficient (reduced from 0.00562279)
+        self.a_m = 0.5 # Motor force transfer coefficient
         self.mc = 0.0  # Cart mass (kg)
-        self.mp = 0.3971  # Pendulum mass (kg)
-        self.I_scale = 0.7110  # Default moment of inertia scale
+        self.mp = 0.527869  # Pendulum mass (kg)
+        self.I_scale = 0.705700  # Default moment of inertia scale
         self.I = self.I_scale * self.mp * self.l**2  # instead of 0.00  # Moment of inertia (kg·m²)
         self.R_pulley = 0.009  # Pulley radius (m)
-        self.c_angle = 1  # new parameter
+        self.x_pivot_scale = 1 #just for visualization
 
         # Motor State
         self.future_motor_accelerations = []
@@ -57,7 +57,7 @@ class DigitalTwin:
         self.click_counter = 0  # User input counter
 
         # Action Configuration (User Input)
-        action_durations = [400, 350, 300, 200]  # Action durations (ms)
+        action_durations = [200, 150, 100, 50]  # Action durations (ms)
         keys_left = [pygame.K_a, pygame.K_s, pygame.K_d, pygame.K_f]  # Left movement keys
         keys_right = [pygame.K_SEMICOLON, pygame.K_l, pygame.K_k, pygame.K_j]  # Right movement keys
 
@@ -67,15 +67,8 @@ class DigitalTwin:
 
         # Define possible actions with different durations
         self.action_map = [
-            ('left', 0),      # 0: No movement
-            ('left', 400),    # 1: Long left
-            ('left', 450),    # 2: Longer left
-            ('left', 500),    # 3: Very long left
-            ('left', 550),    # 4: Extra long left
-            ('right', 400),   # 5: Long right
-            ('right', 450),   # 6: Longer right
-            ('right', 500),   # 7: Very long right
-            ('right', 550)    # 8: Extra long right
+            ('left', 0), ('left', 50), ('left', 100), ('left', 150), ('left', 200),
+            ('right', 50), ('right', 100), ('right', 150), ('right', 200)
         ]
 
         # Data Recording
@@ -161,13 +154,13 @@ class DigitalTwin:
         # Determine motion direction (-1 for left, 1 for right)
         direction = -1 if direction == 'left' else 1
 
-        # Motor parameters
+         # Motor parameters
         k = self.k      # Motor torque constant (N·m/A)
-        J = 8.0075e-6     # Moment of inertia (kg·m²)
-        R = 3          # Motor resistance (Ω) - reduced from 3.0
+        J = 8.5075e-6     # Moment of inertia (kg·m²)
+        R = 3.18          # Motor resistance (Ω)
         V_i = 12.0        # Input voltage (V)
-        B_v = 8e-9      # Viscous damping coefficient (kg·m²/s) - reduced from 1.1e-8
-        T_q = 0.0
+        B_v = 1.5e-7      # Viscous damping coefficient (kg·m²/s)
+        T_q = 0.0         # Load torque (assumed zero for simplification)
 
         # Motion timing (Three-phase movement)
         t1 = duration / 4  # Acceleration phase
@@ -293,7 +286,7 @@ class DigitalTwin:
         self.check_prediction_lists()
         self.currentmotor_acceleration = self.future_motor_accelerations.pop(0)
         self.currentmotor_velocity = self.future_motor_velocities.pop(0)
-        self.x_pivot += self.R_pulley * self.future_motor_positions.pop(0)
+        self.x_pivot += self.x_pivot_scale * self.R_pulley * self.future_motor_positions.pop(0)
 
         # Update pendulum state - corrected integration order
         self.theta_double_dot = self.get_theta_double_dot(self.theta, self.theta_dot)
