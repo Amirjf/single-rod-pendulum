@@ -6,152 +6,118 @@ import numpy as np
 import random
 
 class SimpleGA:
-    def __init__(self, population_size=100, num_generations=50):
+    def __init__(self, population_size=200, num_generations=50):
         self.population_size = population_size
         self.num_generations = num_generations
+        self.mutation_rate = 0.3
+        self.elite_size = 5
+        self.tournament_size = 5
+        self.max_sequence_length = 8
         self.digital_twin = DigitalTwin()
         
         # Possible actions: (direction, duration)
         self.possible_actions = [
-            ('right', 500), ('right', 450), ('right', 400), ('right', 350), ('right', 300),
-            ('left', 500), ('left', 450), ('left', 400), ('left', 350), ('left', 300)
+            ('right', 200), ('right', 150), ('right', 100), ('right', 50),
+            ('left', 200), ('left', 150), ('left', 100), ('left', 50)
         ]
-        
-        # Maximum sequence length
-        self.max_sequence_length = 5
         
         # Target angle (π radians = inverted position)
         self.target_angle = np.pi
     
-    def create_individual(self):
-        """Create a random sequence of actions"""
-        sequence_length = random.randint(2, self.max_sequence_length)
-        return [random.choice(self.possible_actions) for _ in range(sequence_length)]
-    
-    def create_population(self):
-        """Create initial population"""
-        return [self.create_individual() for _ in range(self.population_size)]
-    
-    def evaluate_sequence(self, sequence):
-        """Evaluate a sequence and return fitness score"""
-        # Reset pendulum state
-        self.digital_twin.theta = 0  # Start at 0 radians (pointing down)
-        self.digital_twin.theta_dot = 0
-        self.digital_twin.x_pivot = 0
-        self.digital_twin.steps = 0
+    def create_initial_population(self):
+        population = []
+        # Create some predefined patterns that might work well
+        basic_patterns = [
+            [('left', 200), ('left', 200), ('right', 200)],
+            [('left', 250), ('left', 150), ('right', 250)],
+            [('left', 300), ('left', 100), ('right', 300)],
+            [('left', 200), ('left', 150), ('left', 100), ('right', 250)]
+        ]
         
-        # Execute sequence
-        for direction, duration in sequence:
-            self.digital_twin.perform_action(direction, duration)
+        # Add basic patterns to population
+        population.extend(basic_patterns)
         
-        # Run simulation
-        max_angle = 0
-        time_near_top = 0
-        simulation_time = 4.0  # Increased simulation time
-        steps = int(simulation_time / self.digital_twin.delta_t)
-        
-        for _ in range(steps):
-            theta, theta_dot, _, _ = self.digital_twin.step()
-            # Track the maximum angle reached (in radians)
-            max_angle = max(max_angle, abs(theta))
-            
-            # Count time spent near inverted position (within π/6 radians of π)
-            if abs(abs(theta) - self.target_angle) < np.pi/6:
-                time_near_top += self.digital_twin.delta_t
-        
-        # Calculate fitness score
-        # Angle score: heavily reward getting close to π radians
-        angle_diff = abs(abs(max_angle) - self.target_angle)
-        angle_score = np.exp(-10 * angle_diff)  # Steeper exponential decay
-        
-        # Time score: reward for time spent near inverted position
-        time_score = time_near_top / simulation_time
-        
-        # Velocity score: reward for high angular velocity (helps with swinging up)
-        velocity_score = min(1.0, abs(self.digital_twin.theta_dot) / 15.0)  # Increased velocity threshold
-        
-        # Combine scores with weights - heavily prioritize angle
-        fitness = 0.7 * angle_score + 0.2 * time_score + 0.1 * velocity_score
-        
-        # Penalize longer sequences less
-        length_penalty = len(sequence) / self.max_sequence_length
-        fitness *= (1 - 0.2 * length_penalty)  # Reduced penalty
-        
-        # Bonus for actually reaching π radians
-        if abs(abs(max_angle) - self.target_angle) < 0.1:  # Within 0.1 radians of π
-            fitness *= 2.0
-        
-        return fitness
-    
+        # Fill rest with random sequences
+        while len(population) < self.population_size:
+            sequence_length = random.randint(3, self.max_sequence_length)
+            sequence = []
+            total_time = 0
+            for _ in range(sequence_length):
+                direction = random.choice(['left', 'right'])
+                # Bias towards longer pushes at start, shorter at end
+                if len(sequence) < 2:
+                    duration = random.randint(150, 300)
+                else:
+                    duration = random.randint(50, 200)
+                sequence.append((direction, duration))
+                total_time += duration + 50  # Add 50ms gap
+                if total_time > 1000:  # Limit total sequence time
+                    break
+            population.append(sequence)
+        return population
+
+    def tournament_selection(self, population, fitness_scores):
+        tournament = random.sample(list(enumerate(population)), self.tournament_size)
+        return max(tournament, key=lambda x: fitness_scores[x[0]])[1]
+
     def crossover(self, parent1, parent2):
-        """Perform crossover between two parents"""
-        if not parent1 or not parent2:
-            return self.create_individual()
+        if len(parent1) < 2 or len(parent2) < 2:
+            return parent1[:]
         
-        # Choose crossover point
-        min_len = min(len(parent1), len(parent2))
-        if min_len <= 1:
-            return self.create_individual()
+        # Two-point crossover
+        point1 = random.randint(1, len(parent1)-1)
+        point2 = random.randint(1, len(parent2)-1)
+        child = parent1[:point1] + parent2[point2:]
         
-        crossover_point = random.randint(1, min_len - 1)
-        
-        # Create child by combining parts of parents
-        child = parent1[:crossover_point] + parent2[crossover_point:]
-        
-        # Ensure child doesn't exceed max length
+        # Ensure sequence isn't too long
         if len(child) > self.max_sequence_length:
             child = child[:self.max_sequence_length]
-        
         return child
-    
-    def mutate(self, individual, mutation_rate=0.5):  # Increased mutation rate
-        """Mutate an individual with given probability"""
-        if random.random() < mutation_rate:
-            # Choose mutation type
-            mutation_type = random.choice(['add', 'remove', 'change', 'swap'])
+
+    def mutate(self, sequence):
+        if random.random() < self.mutation_rate:
+            mutation_type = random.choice(['change_duration', 'change_direction', 'add_action', 'remove_action'])
             
-            if mutation_type == 'add' and len(individual) < self.max_sequence_length:
-                # Add a new action
-                individual.append(random.choice(self.possible_actions))
-            elif mutation_type == 'remove' and len(individual) > 2:  # Keep at least 2 actions
-                # Remove a random action
-                individual.pop(random.randint(0, len(individual) - 1))
-            elif mutation_type == 'change':
-                # Change a random action
-                idx = random.randint(0, len(individual) - 1)
-                individual[idx] = random.choice(self.possible_actions)
-            elif mutation_type == 'swap' and len(individual) > 1:
-                # Swap two random actions
-                idx1, idx2 = random.sample(range(len(individual)), 2)
-                individual[idx1], individual[idx2] = individual[idx2], individual[idx1]
+            if mutation_type == 'change_duration':
+                if sequence:
+                    idx = random.randint(0, len(sequence)-1)
+                    direction, _ = sequence[idx]
+                    duration = random.randint(50, 300)
+                    sequence[idx] = (direction, duration)
+            
+            elif mutation_type == 'change_direction':
+                if sequence:
+                    idx = random.randint(0, len(sequence)-1)
+                    _, duration = sequence[idx]
+                    direction = 'right' if sequence[idx][0] == 'left' else 'left'
+                    sequence[idx] = (direction, duration)
+            
+            elif mutation_type == 'add_action' and len(sequence) < self.max_sequence_length:
+                direction = random.choice(['left', 'right'])
+                duration = random.randint(50, 300)
+                insert_pos = random.randint(0, len(sequence))
+                sequence.insert(insert_pos, (direction, duration))
+            
+            elif mutation_type == 'remove_action' and len(sequence) > 2:
+                idx = random.randint(0, len(sequence)-1)
+                sequence.pop(idx)
         
-        return individual
-    
-    def select_parent(self, population, fitnesses):
-        """Select a parent using tournament selection"""
-        tournament_size = 7  # Increased tournament size
-        tournament_indices = random.sample(range(len(population)), tournament_size)
-        tournament_fitnesses = [fitnesses[i] for i in tournament_indices]
-        winner_idx = tournament_indices[tournament_fitnesses.index(max(tournament_fitnesses))]
-        return population[winner_idx]
-    
+        return sequence
+
     def evolve(self):
-        """Run the genetic algorithm"""
-        # Create initial population
-        population = self.create_population()
+        population = self.create_initial_population()
+        best_fitness = float('-inf')
         best_sequence = None
-        best_fitness = 0
         generations_without_improvement = 0
         
         for generation in range(self.num_generations):
-            # Evaluate all individuals
-            fitnesses = [self.evaluate_sequence(ind) for ind in population]
+            fitness_scores = [self.evaluate_sequence(seq) for seq in population]
             
-            # Update best solution
-            max_idx = fitnesses.index(max(fitnesses))
-            if fitnesses[max_idx] > best_fitness:
-                best_fitness = fitnesses[max_idx]
-                best_sequence = population[max_idx]
+            # Check for new best solution
+            max_fitness = max(fitness_scores)
+            if max_fitness > best_fitness:
+                best_fitness = max_fitness
+                best_sequence = population[fitness_scores.index(max_fitness)]
                 generations_without_improvement = 0
                 print(f"\nGeneration {generation + 1}: Found better sequence!")
                 print(f"Sequence: {best_sequence}")
@@ -159,38 +125,78 @@ class SimpleGA:
             else:
                 generations_without_improvement += 1
             
-            # Create new population
-            new_population = []
+            print(f"Generation {generation + 1}: Avg Fitness = {sum(fitness_scores)/len(fitness_scores):.4f}, Best = {max_fitness:.4f}")
             
-            # Elitism: Keep the best individual
-            new_population.append(population[max_idx])
-            
-            # Fill the rest of the new population
-            while len(new_population) < self.population_size:
-                # Select parents
-                parent1 = self.select_parent(population, fitnesses)
-                parent2 = self.select_parent(population, fitnesses)
-                
-                # Create child through crossover
-                child = self.crossover(parent1, parent2)
-                
-                # Mutate child
-                child = self.mutate(child)
-                
-                new_population.append(child)
-            
-            population = new_population
-            
-            # Print generation summary
-            avg_fitness = sum(fitnesses) / len(fitnesses)
-            print(f"Generation {generation + 1}: Avg Fitness = {avg_fitness:.4f}, Best = {max(fitnesses):.4f}")
-            
-            # Early stopping if no improvement for 10 generations
+            # Early stopping
             if generations_without_improvement >= 10:
                 print("No improvement for 10 generations, stopping early.")
                 break
+            
+            # Elitism - keep best solutions
+            elite = sorted(zip(fitness_scores, population), reverse=True)[:self.elite_size]
+            new_population = [seq for _, seq in elite]
+            
+            # Create rest of new population
+            while len(new_population) < self.population_size:
+                parent1 = self.tournament_selection(population, fitness_scores)
+                parent2 = self.tournament_selection(population, fitness_scores)
+                child = self.crossover(parent1, parent2)
+                child = self.mutate(child)
+                new_population.append(child)
+            
+            population = new_population
         
         return best_sequence, best_fitness
+
+    def evaluate_sequence(self, sequence):
+        dt = DigitalTwin()
+        dt.theta = 0  # Reset angle
+        dt.theta_dot = 0  # Reset angular velocity
+        dt.x_pivot = 0  # Reset pivot position
+        
+        # Track history
+        theta_history = []
+        theta_dot_history = []
+        
+        # Execute sequence with 50ms gaps
+        for direction, duration in sequence:
+            dt.perform_action(direction, duration)
+            theta_history.append(dt.theta)
+            theta_dot_history.append(dt.theta_dot)
+            # Add 50ms gap between moves
+            for _ in range(5):  # 5 steps of 10ms each = 50ms
+                dt.step()
+                theta_history.append(dt.theta)
+                theta_dot_history.append(dt.theta_dot)
+        
+        # Let the pendulum swing for a bit
+        for _ in range(100):
+            dt.step()
+            theta_history.append(dt.theta)
+            theta_dot_history.append(dt.theta_dot)
+        
+        # Calculate fitness based on multiple factors
+        max_angle = max(abs(angle) for angle in theta_history)
+        target_angle = math.pi
+        
+        # Calculate time spent near inverted position (within 0.05 radians)
+        time_near_target = sum(1 for angle in theta_history[-50:] 
+                              if abs(abs(angle) - target_angle) < 0.05)
+        
+        # Calculate energy (combination of potential and kinetic)
+        final_velocity = theta_dot_history[-1]
+        energy_score = 1.0 / (1.0 + abs(final_velocity))  # Reward low energy
+        
+        # Base fitness on how close we get to target
+        angle_diff = abs(max_angle - target_angle)
+        angle_score = 1.0 / (1.0 + angle_diff)
+        
+        # Combine scores with weights
+        fitness = (angle_score * 0.4 +  # Primary goal: reach target angle
+                  (time_near_target / 50.0) * 0.4 +  # Secondary: stay there
+                  energy_score * 0.2)  # Tertiary: maintain low energy
+        
+        return fitness
     
     def test_sequence(self, sequence):
         """Test a sequence and print detailed results"""
@@ -235,8 +241,46 @@ class SimpleGA:
 
 def main():
     # Create and run the genetic algorithm
-    ga = SimpleGA(population_size=100, num_generations=50)
+    ga = SimpleGA(population_size=200, num_generations=50)
     best_sequence, best_fitness = ga.evolve()
+    
+    # Convert sequence to timed format with 50ms gaps
+    current_time = 0.0
+    timed_sequence = []
+    for i, (direction, duration) in enumerate(best_sequence):
+        timed_sequence.append((current_time, (direction, duration)))
+        current_time += (duration / 1000.0) + 0.050  # Add 50ms gap
+    
+    print("\nBest sequence in timed format:")
+    print("sequence = [")
+    for i, (time, (direction, duration)) in enumerate(timed_sequence):
+        comment = ""
+        if i == 0:
+            comment = "# Initial strong push"
+        elif i == len(timed_sequence) - 1:
+            comment = "# Final push"
+        else:
+            ordinal = ["First", "Second", "Third", "Fourth", "Fifth"][min(i-1, 4)]
+            comment = f"# {ordinal} follow-up push"
+        
+        print(f"    ({time:.3f}, ('{direction}', {duration})),      {comment}")
+    print("]")
+    
+    # Save the sequence to a file
+    with open("sequence_output.py", "w") as f:
+        f.write("sequence = [\n")
+        for i, (time, (direction, duration)) in enumerate(timed_sequence):
+            comment = ""
+            if i == 0:
+                comment = "# Initial strong push"
+            elif i == len(timed_sequence) - 1:
+                comment = "# Final push"
+            else:
+                ordinal = ["First", "Second", "Third", "Fourth", "Fifth"][min(i-1, 4)]
+                comment = f"# {ordinal} follow-up push"
+            
+            f.write(f"    ({time:.3f}, ('{direction}', {duration})),      {comment}\n")
+        f.write("]\n")
     
     # Test the best sequence
     ga.test_sequence(best_sequence)
