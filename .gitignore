@@ -2,3 +2,4 @@
 *.xlsx
 .DS_Store
 /__pycache__
+reports/motor_data.csv
