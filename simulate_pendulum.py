@@ -11,13 +11,7 @@ import numpy as np
 motor_data_path = "reports/motor_data.csv"
 
 def simulate_pendulum(automated=False, best_sequence=None):
-    """
-    Simulate the pendulum with either automated or manual control.
-    
-    Args:
-        automated (bool): If True, runs in automated mode using best_sequence
-        best_sequence (list): List of (time, action) tuples for automated mode
-    """
+
     # Clear the contents of the recording.csv file
     with open('reports/recording.csv', mode='w', newline='') as file:
         file.truncate()
@@ -85,10 +79,13 @@ def execute_best_sequence(digital_twin):
     """Execute the best action sequence found by the genetic algorithm."""
     # Best sequence timing and actions using ASCII key values
     sequence = [
-        (0.0, ('left', 450)),    # Time 0.0s: Left (450ms)
-        (0.45, ('right',350)),  # Time 0.45s: Right (350ms)
-        (0.80, ('left', 450)),   # Time 0.80s: Left (450ms)
-        (1.25, ('left', 350)),   # Time 1.25s: Left (350ms)
+        (0.000, ('left', 250)),      # Initial strong push
+        (0.300, ('left', 272)),      # First follow-up push
+        (0.622, ('right', 102)),      # Second follow-up push
+        (0.774, ('right', 245)),      # Third follow-up push
+        (1.069, ('right', 105)),      # Fourth follow-up push
+        (1.224, ('left', 116)),      # Fifth follow-up push
+        (1.390, ('right', 100)),      # Final push
     ]
     
     start_time = time.time()
